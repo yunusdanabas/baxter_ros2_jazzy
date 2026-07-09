@@ -124,13 +124,21 @@ Every step runs under the **Baton** workflow: one agent per step, strictly in or
 - **Gate:** hardware bridge non-motion gate passes on the target robot without enabling or moving.
 - **Log:** `logs/I10_hardware_bridge_non_motion.log.md`
 
+### I10-prep: Hardware Action Shim Dry-Run Prep
+
+- **Status:** `completed`
+- **Type:** Implementation (hardware-free)
+- **Description:** Created `baxter_hardware_bridge` package with `FollowJointTrajectory` action shims, safety state checker, mock robot, and dry-run self-test. All safety logic (state validation, joint name validation, hold-on-cancel) is implemented and dry-run tested without a real robot. This unblocks I11 implementation work — when the bridge host is ready, only the hardware-specific integration and I10 non-motion gate remain.
+- **Gate:** `ros2 run baxter_hardware_bridge dry_run_test` passes: safe-state goal accepted+succeeded, bad joints rejected, unsafe state rejected.
+- **Log:** `logs/I10_prep_hardware_shim_dry_run.log.md`
+
 ### I11: Hardware Action Shims And Safety Tools
 
 - **Status:** `blocked`
 - **Type:** Hardware
 - **Blocked By:** I10 hardware bridge non-motion gate.
-- **Description:** Implement ROS 2 `FollowJointTrajectory` action shims for `/robot/limb/left/follow_joint_trajectory` and `/robot/limb/right/follow_joint_trajectory`, plus safe enable/status tooling.
-- **Gate:** action shims reject unsafe `/robot/state`, validate exact joint names, set speed ratio/timeouts, and cancel by holding position.
+- **Description:** Validate the pre-built `FollowJointTrajectory` action shims against a real robot via `baxter_bridge`. The shim code is already implemented and dry-run tested (I10-prep); this step runs the I11 gate on hardware: reject unsafe `/robot/state`, validate exact joint names, set speed ratio/timeouts, and cancel by holding position.
+- **Gate:** action shims reject unsafe `/robot/state`, validate exact joint names, set speed ratio/timeouts, and cancel by holding position — on the real robot, not just mock.
 - **Log:** `logs/I11_hardware_action_shims.log.md`
 
 ### I12: Supervised Hardware Motion
@@ -164,8 +172,9 @@ Every step runs under the **Baton** workflow: one agent per step, strictly in or
 
 ```text
 I00 -> I01 -> I02 -> I03 -> I04 -> I05 -> I06 -> I07 -> I08 -> I09 -> I14
-                                  \
-                                   -> I10 -> I11 -> I12
+                                   \
+                                    -> I10-prep (completed, hardware-free)
+                                    -> I10 -> I11 -> I12
 
 I13 is deferred and depends on a concrete course, hardware, or transport need.
 I14 covers the sim-first release after I09; hardware claims in I14 additionally require I12.

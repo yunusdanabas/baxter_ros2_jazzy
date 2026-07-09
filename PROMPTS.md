@@ -696,3 +696,75 @@ Gate evidence is in `logs/I14_release_hardening.log.md`. The default release sco
 - Zenoh/compatibility fallback: deferred.
 
 No next implementation step is needed in the current I00-I14 plan. Future work should open a new gated plan or unblock I10 explicitly with physical Baxter access, bridge host choice, and university network policy.
+
+---
+
+## I10-prep Prompt (hardware-free action shim dry-run)
+
+You are agent I10-prep for the `baxter_ros2_jazzy` implementation project.
+
+### Task
+
+Create the `baxter_hardware_bridge` package with ROS 2 `FollowJointTrajectory` action shims, safety state checker, mock robot, and dry-run self-test — all testable without a real robot or `baxter_bridge`.
+
+This is hardware-free implementation: no `baxter_bridge` build, no ROS 1 deps, no real robot access.
+
+- Create `src/baxter_hardware_bridge/` (ament_python package).
+- Implement `safety.py`: `SafetyStateChecker` that subscribes to `/robot/state` (`baxter_core_msgs/AssemblyState`), provides `is_safe_for_motion()` (ready + enabled + not stopped + no error + no e-stop), and a CLI `baxter_safety_check` entry point.
+- Implement `follow_joint_trajectory_shim.py`: `FollowJointTrajectoryShim` action server on `/robot/limb/{side}/follow_joint_trajectory` accepting `control_msgs/action/FollowJointTrajectory`. Validates exact 7-joint Baxter names, rejects unsafe state, publishes `baxter_core_msgs/JointCommand` (POSITION_MODE) to `/robot/limb/{side}/joint_command` at bounded rate, publishes low `set_speed_ratio` and `joint_command_timeout`, holds position on cancel (never calls `/robot/set_super_stop`). Has `mock_mode` param to skip JointCommand publishes.
+- Implement `mock_robot.py`: publishes safe `/robot/state` and `/robot/joint_states`, echoes `JointCommand` into joint positions (feedthrough), has `unsafe` parameter for testing rejection.
+- Implement `dry_run_test.py`: in-process test that starts mock + shim, sends a tiny goal (expect accept + succeed), sends bad joint names (expect reject), sets unsafe state and sends goal (expect reject). Exit 0 on pass, 1 on fail.
+- Create `launch/hardware_bringup.launch.py` and `launch/dry_run.launch.py`.
+
+### Read First
+
+- `AGENTS.md`
+- `MASTER_PLAN.md` — I10, I10-prep, I11
+- `plan/logs/S04_bridge_architecture.log.md` — FollowJointTrajectory boundary design, minimum hardware mode topic list, safety rules
+- `plan/logs/S06_moveit_ros2_control.log.md` — hardware controller action names
+- `RESEARCH_FINDINGS.md` — JointCommand message, Joint names
+- `src/baxter_moveit_config/config/moveit_controllers_hardware.yaml` — existing hardware controller config
+- `src/baxter_common_ros2/baxter_core_msgs/msg/AssemblyState.msg`
+- `src/baxter_common_ros2/baxter_core_msgs/msg/JointCommand.msg`
+- `WORKFLOW.md` for the log format
+
+### Gate
+
+`ros2 run baxter_hardware_bridge dry_run_test` passes:
+1. Safe state + correct joints → goal accepted and succeeded.
+2. Bad joint names → goal rejected.
+3. Unsafe state → goal rejected.
+
+### Finish — Baton handoff (required)
+
+1. Verify the gate; record the dry-run test output in your log.
+2. Write `logs/I10_prep_hardware_shim_dry_run.log.md` (frontmatter: `step: I10-prep`, `title`, `agent_date`, `status`, `previous_steps: [I00-I09, I14]`).
+3. Update `MASTER_PLAN.md` I10-prep status to `completed`.
+4. Append a self-contained prompt for I10 (hardware bridge non-motion on real robot) to `PROMPTS.md`.
+
+### Rules
+
+- `plan/` is a read-only archive; never modify it.
+- `PROMPTS.md` is append-only; never edit prior entries.
+- No `baxter_bridge` build, no ROS 1 deps, no real robot access.
+- `baxter_hardware_bridge` must build with `colcon build --base-paths src --packages-skip baxter_bridge`.
+- Keep default CI hardware-free: do not add `baxter_hardware_bridge` to the default CI workflow.
+- Do not teach raw safety-topic publishing in any docs.
+
+---
+
+## I10-prep Completion Note
+
+I10-prep completed on 2026-07-09.
+
+Created `src/baxter_hardware_bridge/` (ament_python) with:
+- `safety.py` — SafetyStateChecker + `baxter_safety_check` CLI
+- `follow_joint_trajectory_shim.py` — FollowJointTrajectory action server → JointCommand
+- `mock_robot.py` — mock /robot/state + /robot/joint_states for dry-run
+- `dry_run_test.py` — in-process self-test (3 tests, all pass)
+
+Gate evidence: `ros2 run baxter_hardware_bridge dry_run_test` → PASS (3/3 tests).
+
+Full build: `colcon build --base-paths src --packages-skip baxter_bridge` → 9 packages finished.
+
+Next step: I10 (hardware bridge non-motion) requires physical Baxter access, bridge host, and network policy. When ready, run `baxter_bridge` on the bridge host, verify non-motion topics, then run `hardware_bringup.launch.py` with `mock_mode:=false` to exercise the shims against the real robot.
