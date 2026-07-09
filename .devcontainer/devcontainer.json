@@ -1,0 +1,9 @@
+{
+  "name": "baxter_ros2_jazzy",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspaces/baxter_ros2_jazzy",
+  "postCreateCommand": "bash -lc 'source /opt/ros/jazzy/setup.bash && mkdir -p src && if [ ! -d src/baxter_common_ros2 ]; then vcs import src < repos/baxter_core.repos; fi && rosdep install --from-paths src --ignore-src -r -y && colcon build --base-paths src --symlink-install --packages-skip baxter_bridge'"
+}

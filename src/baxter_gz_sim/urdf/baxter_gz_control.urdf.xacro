@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<robot name="baxter" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="gazebo" default="false"/>
+  <xacro:arg name="pedestal" default="true"/>
+  <xacro:arg name="controllers_file" default="$(find baxter_gz_sim)/config/ros2_controllers.yaml"/>
+
+  <xacro:property name="PI" value="3.1415927"/>
+
+  <xacro:include filename="$(find baxter_description)/urdf/baxter_base/baxter_base.urdf.xacro"/>
+
+  <xacro:if value="$(arg pedestal)">
+    <xacro:include filename="$(find baxter_description)/urdf/pedestal/pedestal.xacro"/>
+  </xacro:if>
+
+  <xacro:include filename="$(find baxter_description)/urdf/left_end_effector.urdf.xacro"/>
+  <xacro:include filename="$(find baxter_description)/urdf/right_end_effector.urdf.xacro"/>
+
+  <xacro:macro name="arm_ros2_control_joint" params="joint_name">
+    <joint name="${joint_name}">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <xacro:arm_ros2_control_joint joint_name="left_s0"/>
+    <xacro:arm_ros2_control_joint joint_name="left_s1"/>
+    <xacro:arm_ros2_control_joint joint_name="left_e0"/>
+    <xacro:arm_ros2_control_joint joint_name="left_e1"/>
+    <xacro:arm_ros2_control_joint joint_name="left_w0"/>
+    <xacro:arm_ros2_control_joint joint_name="left_w1"/>
+    <xacro:arm_ros2_control_joint joint_name="left_w2"/>
+    <xacro:arm_ros2_control_joint joint_name="right_s0"/>
+    <xacro:arm_ros2_control_joint joint_name="right_s1"/>
+    <xacro:arm_ros2_control_joint joint_name="right_e0"/>
+    <xacro:arm_ros2_control_joint joint_name="right_e1"/>
+    <xacro:arm_ros2_control_joint joint_name="right_w0"/>
+    <xacro:arm_ros2_control_joint joint_name="right_w1"/>
+    <xacro:arm_ros2_control_joint joint_name="right_w2"/>
+  </ros2_control>
+
+  <gazebo>
+    <plugin filename="libgz_ros2_control-system.so" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(arg controllers_file)</parameters>
+    </plugin>
+  </gazebo>
+</robot>

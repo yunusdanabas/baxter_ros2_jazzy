@@ -1,0 +1,31 @@
+name: Docs issue
+description: Missing, stale, or unclear documentation
+title: "[docs] "
+labels: [docs]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page path
+      placeholder: docs/getting_started_sim.md
+    validations:
+      required: true
+  - type: textarea
+    id: unclear
+    attributes:
+      label: What is unclear or wrong?
+    validations:
+      required: true
+  - type: input
+    id: audience
+    attributes:
+      label: Expected audience
+      placeholder: student, maintainer, lab admin
+    validations:
+      required: false
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed correction
+    validations:
+      required: false

@@ -1,0 +1,11 @@
+build/
+install/
+log/
+.env
+.vscode/
+__pycache__/
+*.py[cod]
+*.egg-info/
+plan/
+src/baxter_common_ros2/
+.cursor/

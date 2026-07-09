@@ -1,0 +1,44 @@
+name: Safety concern
+description: Report potentially unsafe behavior, wording, or hardware workflow
+title: "[safety] "
+labels: [safety]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include step-by-step unsafe hardware instructions in public issues. Use private reporting when possible.
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Affected profile
+      options:
+        - sim
+        - sim_moveit
+        - hardware_bridge
+        - supervised_hardware_motion
+        - docs
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Was real hardware involved?
+      options:
+        - "No"
+        - "Yes"
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Safety risk
+      description: Describe impact without unsafe command recipes.
+    validations:
+      required: true
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Immediate mitigation
+    validations:
+      required: false

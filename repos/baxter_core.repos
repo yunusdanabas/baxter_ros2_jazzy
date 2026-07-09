@@ -1,0 +1,5 @@
+repositories:
+  baxter_common_ros2:
+    type: git
+    url: https://github.com/CentraleNantesRobotics/baxter_common_ros2.git
+    version: 678bfabea8c895b4134951a6c076217a90b9e0e6

@@ -1,0 +1,36 @@
+name: Feature request
+description: Request work outside the current sim-first baseline
+title: "[feature] "
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Affected profile
+      options:
+        - sim
+        - sim_moveit
+        - hardware_bridge
+        - supervised_hardware_motion
+        - Zenoh/compatibility fallback
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: story
+    attributes:
+      label: User story or lab need
+    validations:
+      required: true
+  - type: textarea
+    id: existing
+    attributes:
+      label: Why existing profiles do not cover it
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Sim, hardware, safety, and licensing impact
+    validations:
+      required: true

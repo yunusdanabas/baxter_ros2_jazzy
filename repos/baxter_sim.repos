@@ -1,0 +1,3 @@
+# No external sim repos by default.
+# Keep unlicensed simulation repositories reference-only until license status changes.
+repositories: {}

@@ -1,0 +1,60 @@
+name: Hardware bridge bug
+description: Blocked bridge-host investigation. This is not a hardware support claim.
+title: "[hardware-bridge] "
+labels: [hardware_bridge, bug, blocked]
+body:
+  - type: markdown
+    attributes:
+      value: Hardware bridge support is blocked until I10 passes. Do not use this form to claim supervised motion support.
+  - type: input
+    id: bridge_os
+    attributes:
+      label: Bridge host OS
+    validations:
+      required: true
+  - type: input
+    id: ecn_pin
+    attributes:
+      label: ECN source pin
+      placeholder: 678bfabea8c895b4134951a6c076217a90b9e0e6
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Include ROS_MASTER_URI, ROS_IP or ROS_HOSTNAME, ROS_DOMAIN_ID, and RMW. Redact private network details if needed.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: graph
+    attributes:
+      label: Robot graph status
+      description: List non-motion topics/services/actions observed.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: enabled
+    attributes:
+      label: Was real hardware enabled?
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+  - type: textarea
+    id: smoke
+    attributes:
+      label: Non-motion smoke results
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: text
+    validations:
+      required: true

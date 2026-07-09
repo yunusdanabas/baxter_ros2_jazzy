@@ -1,0 +1,64 @@
+name: Sim bug
+description: Gazebo sim or sim MoveIt issue in a supported profile
+title: "[sim] "
+labels: [sim, bug]
+body:
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile
+      options:
+        - sim
+        - sim_moveit
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: Ubuntu 24.04 Noble
+    validations:
+      required: true
+  - type: input
+    id: ros
+    attributes:
+      label: ROS 2 distro
+      placeholder: Jazzy
+    validations:
+      required: true
+  - type: input
+    id: gazebo
+    attributes:
+      label: Gazebo / ros_gz version
+    validations:
+      required: false
+  - type: input
+    id: rmw
+    attributes:
+      label: RMW implementation
+      placeholder: rmw_fastrtps_cpp
+    validations:
+      required: false
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands run
+      description: Include launch command and smoke command.
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: controllers
+    attributes:
+      label: Controller list and joint state status
+      description: Paste `ros2 control list_controllers` and relevant `/joint_states` details.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: text
+    validations:
+      required: true
