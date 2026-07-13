@@ -34,3 +34,10 @@ CentraleNantesRobotics/baxter_common_ros2@678bfabea8c895b4134951a6c076217a90b9e0
 ```
 
 No hardware bridge source, ROS 1 dependency source, Zenoh fallback, or unlicensed external import belongs in the default path.
+
+## Bundled Reference PDFs
+
+`docs/reference/baxter_legacy/` contains third-party Baxter reference PDFs (Rethink
+Robotics user guide, research demo examples, and an academic thesis). They are
+reference-only material and are not covered by the root BSD-3-Clause license.
+See `docs/reference/baxter_legacy/README.md` for file descriptions and attribution.

@@ -30,6 +30,7 @@ This documentation covers the sim-first baseline that has passed gates in I01-I0
 | `ci_release_checklist.md` | Default CI checks and manual smoke checklist. |
 | `release_notes_v0.1.0-sim.md` | First sim-first release notes and support labels. |
 | `maintainer_handoff.md` | Maintainer release checklist, pin policy, and blocked hardware handoff items. |
+| `reference/baxter_legacy/` | Legacy Rethink Baxter PDFs (Intera user guide, research demos, thesis). |
 
 ## Default Rules
 
