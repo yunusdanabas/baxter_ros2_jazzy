@@ -6,6 +6,14 @@ log/
 __pycache__/
 *.py[cod]
 *.egg-info/
-plan/
 src/baxter_common_ros2/
+
+# LLM agent workflow (local only; not part of the public OSS tree)
+plan/
 .cursor/
+AGENTS.md
+MASTER_PLAN.md
+PROMPTS.md
+WORKFLOW.md
+RESEARCH_FINDINGS.md
+logs/
