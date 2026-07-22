@@ -1,6 +1,6 @@
 # Getting Started: Simulation
 
-This is the default 15-minute path for a clean ROS 2 Jazzy sim workspace. It ends at `sim_tiny_trajectory` and does not require hardware, ROS 1, `baxter_bridge`, or Zenoh.
+This is the default 15-minute path for a clean ROS 2 Jazzy sim workspace. It ends at a measured, reversible `sim_tiny_trajectory` and does not require hardware, ROS 1, `baxter_bridge`, or Zenoh.
 
 ## Devcontainer Path
 
@@ -26,7 +26,7 @@ Terminal 2:
 ros2 launch baxter_examples sim_tiny_trajectory.launch.py
 ```
 
-Expected result: both arm controller actions succeed and the command prints `Tiny trajectories completed for both arms`.
+Expected result: both arms report outbound and return errors at or below `0.02 rad`.
 
 ## Native Ubuntu 24.04 Path
 
@@ -62,6 +62,8 @@ colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
 source install/setup.bash
 ```
 
+Choose an unused domain and partition rather than copying `42` when other ROS or Gazebo sessions may be running. If a previous build used another workspace underlay, remove this workspace's generated `build/`, `install/`, and `log/` directories and rebuild from a shell that sources only `/opt/ros/jazzy`.
+
 If `src/baxter_common_ros2` already exists, verify the required pin instead of importing over it:
 
 ```bash
@@ -96,12 +98,14 @@ left_arm_controller active
 right_arm_controller active
 ```
 
-Expected trajectory result:
+Expected trajectory result includes measured outbound and return checks for both arms:
 
 ```text
-/left_arm_controller/follow_joint_trajectory succeeded
-/right_arm_controller/follow_joint_trajectory succeeded
-Tiny trajectories completed for both arms
+left_arm_controller ... outbound verified: max_error=... rad
+left_arm_controller ... return verified: max_error=... rad
+right_arm_controller ... outbound verified: max_error=... rad
+right_arm_controller ... return verified: max_error=... rad
+Reversible trajectories verified for both arms
 ```
 
 ## What This Does Not Install

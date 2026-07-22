@@ -3,7 +3,9 @@
 ## Profile Changed
 
 - [ ] `sim`
+- [ ] `sim_rviz`
 - [ ] `sim_moveit`
+- [ ] `sim_moveit_rviz`
 - [ ] default CI/devcontainer
 - [ ] docs only
 - [ ] pin/source metadata
@@ -15,6 +17,7 @@
 - [ ] Pinned ECN SHA verified
 - [ ] Sim smoke run, if affected
 - [ ] MoveIt sim smoke run, if affected
+- [ ] Numeric final state and clean teardown verified, if runtime is affected
 - [ ] `docs/ci_release_checklist.md` reviewed, if release/support labels changed
 
 ## Pins And Licensing

@@ -15,10 +15,28 @@
   <xacro:include filename="$(find baxter_description)/urdf/left_end_effector.urdf.xacro"/>
   <xacro:include filename="$(find baxter_description)/urdf/right_end_effector.urdf.xacro"/>
 
-  <xacro:macro name="arm_ros2_control_joint" params="joint_name">
+  <link name="world"/>
+  <joint name="world_joint" type="fixed">
+    <origin xyz="0 0 0.92418" rpy="0 0 0"/>
+    <parent link="world"/>
+    <child link="base"/>
+  </joint>
+
+  <xacro:macro name="arm_ros2_control_joint" params="joint_name initial_position">
     <joint name="${joint_name}">
       <command_interface name="position"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">${initial_position}</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="state_only_ros2_control_joint" params="joint_name initial_position">
+    <joint name="${joint_name}">
+      <state_interface name="position">
+        <param name="initial_value">${initial_position}</param>
+      </state_interface>
       <state_interface name="velocity"/>
     </joint>
   </xacro:macro>
@@ -27,20 +45,23 @@
     <hardware>
       <plugin>gz_ros2_control/GazeboSimSystem</plugin>
     </hardware>
-    <xacro:arm_ros2_control_joint joint_name="left_s0"/>
-    <xacro:arm_ros2_control_joint joint_name="left_s1"/>
-    <xacro:arm_ros2_control_joint joint_name="left_e0"/>
-    <xacro:arm_ros2_control_joint joint_name="left_e1"/>
-    <xacro:arm_ros2_control_joint joint_name="left_w0"/>
-    <xacro:arm_ros2_control_joint joint_name="left_w1"/>
-    <xacro:arm_ros2_control_joint joint_name="left_w2"/>
-    <xacro:arm_ros2_control_joint joint_name="right_s0"/>
-    <xacro:arm_ros2_control_joint joint_name="right_s1"/>
-    <xacro:arm_ros2_control_joint joint_name="right_e0"/>
-    <xacro:arm_ros2_control_joint joint_name="right_e1"/>
-    <xacro:arm_ros2_control_joint joint_name="right_w0"/>
-    <xacro:arm_ros2_control_joint joint_name="right_w1"/>
-    <xacro:arm_ros2_control_joint joint_name="right_w2"/>
+    <xacro:arm_ros2_control_joint joint_name="left_s0" initial_position="0.0"/>
+    <xacro:arm_ros2_control_joint joint_name="left_s1" initial_position="-0.55"/>
+    <xacro:arm_ros2_control_joint joint_name="left_e0" initial_position="0.0"/>
+    <xacro:arm_ros2_control_joint joint_name="left_e1" initial_position="0.75"/>
+    <xacro:arm_ros2_control_joint joint_name="left_w0" initial_position="0.0"/>
+    <xacro:arm_ros2_control_joint joint_name="left_w1" initial_position="1.26"/>
+    <xacro:arm_ros2_control_joint joint_name="left_w2" initial_position="0.0"/>
+    <xacro:arm_ros2_control_joint joint_name="right_s0" initial_position="0.0"/>
+    <xacro:arm_ros2_control_joint joint_name="right_s1" initial_position="-0.55"/>
+    <xacro:arm_ros2_control_joint joint_name="right_e0" initial_position="0.0"/>
+    <xacro:arm_ros2_control_joint joint_name="right_e1" initial_position="0.75"/>
+    <xacro:arm_ros2_control_joint joint_name="right_w0" initial_position="0.0"/>
+    <xacro:arm_ros2_control_joint joint_name="right_w1" initial_position="1.26"/>
+    <xacro:arm_ros2_control_joint joint_name="right_w2" initial_position="0.0"/>
+    <xacro:state_only_ros2_control_joint joint_name="head_pan" initial_position="0.0"/>
+    <xacro:state_only_ros2_control_joint joint_name="l_gripper_l_finger_joint" initial_position="0.0"/>
+    <xacro:state_only_ros2_control_joint joint_name="r_gripper_l_finger_joint" initial_position="0.0"/>
   </ros2_control>
 
   <gazebo>

@@ -8,8 +8,8 @@ This is the first public sim-first baseline for `baxter_ros2_jazzy`.
 
 | Profile | Support label | Evidence |
 |---|---:|---|
-| `sim` | passed | I04-I06 and I09: Gazebo starts, Baxter spawns, arm controllers are active, `/joint_states` has all 14 arm joints, `sim_tiny_trajectory` succeeds for both arms. |
-| `sim_moveit` | passed, manual/local smoke | I07/I08: MoveIt loads groups/states/world joint, `/move_action` is visible, tiny left-arm plan+execute passed locally. |
+| `sim` | passed at release | I04-I06 and I09 action-level gate; this did not include later GUI acceptance. |
+| `sim_moveit` | passed at release, manual/local smoke | I07/I08 left-arm action-level gate; this did not include later configured RViz acceptance. |
 | default CI/devcontainer | passed, hardware-free | I08: devcontainer build and CI-equivalent build/import/model/MoveIt static checks passed. |
 | `hardware_bridge` | blocked | I10 has not run; no hardware support claim. |
 | supervised hardware motion | blocked | I12 has not run; no hardware motion support claim. |
@@ -38,11 +38,10 @@ source install/setup.bash
 
 `baxter_bridge` remains bridge-host-only and is skipped in default sim/devcontainer/CI builds.
 
-## Known Non-Blockers
+## Post-Release Qualification
 
-- `move_group` warns that `head_pan`, `l_gripper_l_finger_joint`, and `r_gripper_l_finger_joint` are missing from `/joint_states`; I05/I07 expose only arm joints for default sim motion.
-- `move_group` logs `No 3D sensor plugin(s) defined for octomap updates`; no 3D sensors are in first CI scope.
-- Full Gazebo plus MoveIt runtime is manual/local smoke for now because I07 observed possible `move_group` SIGINT teardown segfault after successful execution. Default CI uses build/import/model/MoveIt static checks.
+- I15 adds separate `sim_rviz` and `sim_moveit_rviz` gates, full independent joint state, numeric final-state checks, and teardown acceptance. See `CHANGELOG.md` and the I15 log.
+- Gripper physics fidelity, visual-only sensor collision geometry, and sensed-obstacle planning remain scoped limitations rather than suppressed warnings.
 
 ## Release No-Go Checks
 

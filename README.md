@@ -7,7 +7,9 @@ ROS 2 Jazzy workspace for Baxter simulation first: Gazebo Harmonic, `ros2_contro
 | Mode | Status | Start here |
 |---|---:|---|
 | Gazebo sim | passed | `docs/getting_started_sim.md` |
+| Gazebo + RViz | manual/local GUI | `docs/simulation.md` |
 | MoveIt sim | passed, manual/local smoke | `docs/moveit_guide.md` |
+| Gazebo + MoveIt RViz | manual/local GUI | `docs/moveit_guide.md` |
 | Default CI/devcontainer | passed, hardware-free | `docs/ci_release_checklist.md` |
 | Hardware bridge | blocked | I10 is not started; no beginner docs yet |
 | Supervised hardware motion | blocked | I12 is not started; no support claim |
@@ -15,16 +17,16 @@ ROS 2 Jazzy workspace for Baxter simulation first: Gazebo Harmonic, `ros2_contro
 
 ## Current Status
 
-Implementation steps **I00-I09** plus the **I14 sim-first release baseline** are complete. The supported default path is hardware-free simulation through `sim_tiny_trajectory`, plus a MoveIt sim profile that has planned and executed a tiny left-arm motion locally.
+The supported default path is hardware-free simulation through a measured, reversible `sim_tiny_trajectory`. Both RViz profiles work: the plain RobotModel/TF one and the MoveIt MotionPlanning one, the latter with interactive-marker IK on each gripper. Hardware remains blocked.
 
 Implemented local packages:
 
 | Package | Purpose |
 |---|---|
 | `baxter_bringup` | Minimal model launch and `robot_state_publisher` path. |
-| `baxter_gz_sim` | Gazebo Harmonic launch, `/clock` bridge, `gz_ros2_control`, two arm controllers. |
-| `baxter_examples` | Tiny sim trajectory command and MoveIt sim smoke command. |
-| `baxter_moveit_config` | MoveIt 2 config for the sim arm controllers. |
+| `baxter_gz_sim` | Gazebo Harmonic, fixed pedestal mount, 17-joint state, two arm controllers, plain RViz profile. |
+| `baxter_examples` | Reversible direct and MoveIt motion/cancellation checks. |
+| `baxter_moveit_config` | Readiness-gated MoveIt 2, IK/pose clients, and a MotionPlanning RViz profile. |
 
 Imported dependency:
 
@@ -44,6 +46,8 @@ rosdep install --from-paths src --ignore-src -r -y
 colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
 source install/setup.bash
 ```
+
+Run one simulation at a time. If this workspace or its underlay changes, remove generated `build/`, `install/`, and `log/` before rebuilding; never hand-edit generated setup files.
 
 If `src/baxter_common_ros2` already exists, do not re-import over local changes; verify the pin instead:
 
@@ -69,7 +73,7 @@ source /opt/ros/jazzy/setup.bash && source install/setup.bash
 ros2 launch baxter_examples sim_tiny_trajectory.launch.py
 ```
 
-Expected result: both `/left_arm_controller/follow_joint_trajectory` and `/right_arm_controller/follow_joint_trajectory` succeed.
+Expected result: both arms reach a bounded target within `0.02 rad` and return to their measured start positions.
 
 ## Devcontainer And CI
 

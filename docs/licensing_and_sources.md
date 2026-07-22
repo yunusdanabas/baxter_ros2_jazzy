@@ -19,6 +19,11 @@ Local project code is licensed under BSD-3-Clause. The root `LICENSE` file cover
 
 Imported sources keep their upstream license files and package metadata.
 
+`src/baxter_moveit_config/src/baxter_move_group.cpp` is adapted from MoveIt
+2.12.4's BSD-3-Clause `move_group.cpp`; its upstream copyright and license
+notice are retained in the file. The local shutdown path works around
+`moveit/moveit2#3721` and should be removed when the packaged Jazzy bug is fixed.
+
 ## Reference-Only Sources
 
 The `plan/` directory is a read-only planning archive and is git-ignored. It may contain reference material used during planning, but it is not part of the implementation source tree and must not be modified by step agents.

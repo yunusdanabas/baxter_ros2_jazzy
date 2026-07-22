@@ -65,8 +65,11 @@ jobs:
           paths = [
               Path('src/baxter_bringup/launch/baxter_description.launch.py'),
               Path('src/baxter_gz_sim/launch/sim.launch.py'),
+              Path('src/baxter_gz_sim/launch/sim_rviz.launch.py'),
               Path('src/baxter_moveit_config/launch/move_group.launch.py'),
               Path('src/baxter_moveit_config/launch/sim_moveit.launch.py'),
+              Path('src/baxter_moveit_config/launch/sim_moveit_rviz.launch.py'),
+              Path('src/baxter_moveit_config/scripts/wait_for_sim_ready.py'),
               Path('src/baxter_examples/baxter_examples/sim_tiny_trajectory.py'),
               Path('src/baxter_examples/baxter_examples/moveit_left_tiny.py'),
           ]
@@ -93,7 +96,38 @@ jobs:
 
           moveit_share = Path(get_package_share_directory('baxter_moveit_config'))
           gz_share = Path(get_package_share_directory('baxter_gz_sim'))
+          urdf_root = ET.parse('/tmp/baxter_gz_control.urdf').getroot()
           srdf_root = ET.parse(moveit_share / 'config' / 'baxter.srdf').getroot()
+
+          links = {link.attrib['name'] for link in urdf_root.findall('link')}
+          child_links = {joint.find('child').attrib['link'] for joint in urdf_root.findall('joint')}
+          assert links - child_links == {'world'}, links - child_links
+          world_joint = urdf_root.find("joint[@name='world_joint']")
+          assert world_joint is not None and world_joint.attrib['type'] == 'fixed'
+          assert world_joint.find('parent').attrib['link'] == 'world'
+          assert world_joint.find('child').attrib['link'] == 'base'
+          assert world_joint.find('origin').attrib == {'xyz': '0 0 0.92418', 'rpy': '0 0 0'}
+
+          arm_joints = {
+              'left_s0', 'left_s1', 'left_e0', 'left_e1', 'left_w0', 'left_w1', 'left_w2',
+              'right_s0', 'right_s1', 'right_e0', 'right_e1', 'right_w0', 'right_w1', 'right_w2',
+          }
+          state_only_joints = {'head_pan', 'l_gripper_l_finger_joint', 'r_gripper_l_finger_joint'}
+          control_joints = {
+              joint.attrib['name']: joint for joint in urdf_root.find('ros2_control').findall('joint')
+          }
+          assert set(control_joints) == arm_joints | state_only_joints, set(control_joints)
+          command_joints = {
+              name for name, joint in control_joints.items()
+              if joint.find("command_interface[@name='position']") is not None
+          }
+          assert command_joints == arm_joints, command_joints
+          for name, joint in control_joints.items():
+              position = joint.find("state_interface[@name='position']")
+              velocity = joint.find("state_interface[@name='velocity']")
+              assert position is not None and velocity is not None, name
+              initial = position.find("param[@name='initial_value']")
+              assert initial is not None, name
 
           groups = {group.attrib['name'] for group in srdf_root.findall('group')}
           required_groups = {'left_arm', 'right_arm', 'both_arms', 'left_hand', 'right_hand'}
@@ -102,20 +136,43 @@ jobs:
           states = {(state.attrib['group'], state.attrib['name']) for state in srdf_root.findall('group_state')}
           assert ('left_arm', 'left_neutral') in states, states
           assert ('right_arm', 'right_neutral') in states, states
+          assert srdf_root.find('virtual_joint') is None
+          for state in srdf_root.findall('group_state'):
+              if state.attrib['name'] not in {'left_neutral', 'right_neutral'}:
+                  continue
+              for joint in state.findall('joint'):
+                  position = control_joints[joint.attrib['name']].find(
+                      "state_interface[@name='position']/param[@name='initial_value']"
+                  )
+                  assert float(position.text) == float(joint.attrib['value']), joint.attrib['name']
 
-          world_joint = srdf_root.find('virtual_joint')
-          assert world_joint is not None
-          assert world_joint.attrib == {
-              'name': 'world_joint',
-              'type': 'fixed',
-              'parent_frame': 'world',
-              'child_link': 'base',
-          }, world_joint.attrib
+          collision_pairs = set()
+          for collision in srdf_root.findall('disable_collisions'):
+              link1, link2 = collision.attrib['link1'], collision.attrib['link2']
+              assert link1 in links and link2 in links and link1 != link2, collision.attrib
+              pair = tuple(sorted((link1, link2)))
+              assert pair not in collision_pairs, pair
+              collision_pairs.add(pair)
+              assert collision.attrib['reason'] in {'Adjacent', 'Default', 'Never'}
+          assert ('left_upper_elbow', 'left_upper_shoulder') not in collision_pairs
+          assert ('right_upper_elbow', 'right_upper_shoulder') not in collision_pairs
 
           with (moveit_share / 'config' / 'ompl_planning.yaml').open() as handle:
               ompl = yaml.safe_load(handle)
           assert ompl['planning_plugins'] == ['ompl_interface/OMPLPlanner'], ompl
           assert 'RRTConnectkConfigDefault' in ompl['planner_configs'], ompl
+          for group in ('left_arm', 'right_arm', 'both_arms'):
+              assert ompl[group]['default_planner_config'] == 'RRTConnectkConfigDefault', group
+
+          with (gz_share / 'config' / 'ros2_controllers.yaml').open() as handle:
+              ros2_controllers = yaml.safe_load(handle)
+          assert ros2_controllers['controller_manager']['ros__parameters']['enforce_command_limits'] is True
+          for side in ('left', 'right'):
+              controller = ros2_controllers[f'{side}_arm_controller']['ros__parameters']
+              assert controller['constraints']['goal_time'] > 0
+              for joint in controller['joints']:
+                  assert controller['constraints'][joint]['trajectory'] > 0
+                  assert controller['constraints'][joint]['goal'] == 0.02
 
           with (moveit_share / 'config' / 'moveit_controllers_sim.yaml').open() as handle:
               controllers = yaml.safe_load(handle)
@@ -137,5 +194,22 @@ jobs:
               .to_dict()
           )
           assert 'robot_description' in config and 'robot_description_semantic' in config, config.keys()
-          print(f"moveit_static_check=passed groups={sorted(groups)}")
+          assert config['default_planning_pipeline'] == 'ompl', config.keys()
+          assert config['planning_pipelines'] == ['ompl'], config
+          assert 'robot_description_kinematics' in config and 'robot_description_planning' in config
+
+          assert 'rviz_default_plugins/RobotModel' in (gz_share / 'config' / 'sim.rviz').read_text()
+          moveit_rviz = (moveit_share / 'config' / 'moveit.rviz').read_text()
+          assert 'moveit_rviz_plugin/MotionPlanning' in moveit_rviz
+          assert 'Fixed Frame: world' in moveit_rviz
+
+          # Qt calls setlocale(LC_ALL, "") before rclcpp::init in rviz2, so under a
+          # comma-decimal locale rcl parses every double parameter as a string and
+          # loadRobotModel dies. See docs/known_issues.md.
+          sim_moveit_launch = (moveit_share / 'launch' / 'sim_moveit.launch.py').read_text()
+          assert 'LC_NUMERIC' in sim_moveit_launch, 'rviz2 node must pin LC_NUMERIC=C'
+          print(
+              f"moveit_static_check=passed groups={sorted(groups)} "
+              f"independent_joints={len(control_joints)} acm_pairs={len(collision_pairs)}"
+          )
           PY

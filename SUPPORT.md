@@ -7,17 +7,21 @@ This is a community/university ROS 2 Jazzy workspace. It is not official Baxter 
 | Profile | Support label | What is covered |
 |---|---:|---|
 | `sim` | passed | Gazebo Harmonic, arm controllers, `/joint_states`, `sim_tiny_trajectory`. |
-| `sim_moveit` | passed, manual/local smoke | MoveIt 2 sim config and left-arm tiny plan+execute. Full Gazebo+MoveIt runtime remains manual/local smoke. |
+| `sim_rviz` | passed, manual/local GUI | Checked-in RobotModel/TF profile with complete independent state. |
+| `sim_moveit` | passed, manual/local smoke | Readiness-gated MoveIt 2 with reversible left/right/both-arm execution. |
+| `sim_moveit_rviz` | passed, manual/local GUI | Checked-in MotionPlanning profile with OMPL/RRTConnect. |
 | default CI/devcontainer | passed, hardware-free | Build, import/model checks, static MoveIt checks. |
 | `hardware_bridge` | blocked | No support claim. I10 has not run. |
 | supervised hardware motion | blocked | No support claim. I12 has not run. |
 | Zenoh/compatibility fallback | deferred | Not in default install/devcontainer/CI. |
 
-## Known Non-Blockers
+## Scoped Limitations
 
-- `move_group` warns that `head_pan`, `l_gripper_l_finger_joint`, and `r_gripper_l_finger_joint` are missing from `/joint_states`; the default sim profile controls only arm joints.
-- `move_group` logs `No 3D sensor plugin(s) defined for octomap updates`; no 3D sensor pipeline is in the first CI scope.
-- Full Gazebo plus MoveIt runtime is manual/local smoke because I07 observed a possible `move_group` SIGINT teardown segfault after successful execution.
+- Gripper source state and mimic TF are available, but gripper commands and DART mimic-contact fidelity are not supported.
+- The empty-world MoveIt profile has no 3D octomap sensor. Sensed-obstacle avoidance is not a support claim.
+- Display and hand-sensor links with visual-only geometry are not exact collision volumes.
+- Full Gazebo plus MoveIt runtime remains a manual/local gate; a teardown crash or leftover process is a failure.
+- The Jazzy MoveIt 2.12.4 profile carries a sim-only shutdown workaround for upstream `moveit/moveit2#3721`.
 
 ## How To Ask For Help
 

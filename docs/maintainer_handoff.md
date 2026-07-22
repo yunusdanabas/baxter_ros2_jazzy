@@ -7,7 +7,9 @@ This handoff is for the sim-first release baseline. It is not a hardware runbook
 | Item | Current state |
 |---|---:|
 | `sim` | passed |
+| `sim_rviz` | passed, manual/local GUI |
 | `sim_moveit` | passed, manual/local smoke |
+| `sim_moveit_rviz` | passed, manual/local GUI |
 | default CI/devcontainer | passed, hardware-free |
 | `hardware_bridge` | blocked |
 | supervised hardware motion | blocked |
@@ -56,7 +58,7 @@ Do not merge hardware bridge tooling, action shims, gripper implementation, Zeno
 
 - Name the long-term maintainer group.
 - Decide docs hosting beyond GitHub Markdown if needed.
-- Revisit full Gazebo+MoveIt CI only after teardown stability is proven.
+- Revisit full Gazebo+MoveIt CI only if a reliable GUI-capable runner is available; local teardown remains a required gate.
 - Run a future handoff drill where someone other than the primary author follows the sim docs from a clean checkout.
 
 ## Files Maintainers Should Review Before Tagging

@@ -42,19 +42,17 @@
 
   <end_effector name="left_hand_eef" parent_link="left_gripper" group="left_hand" parent_group="left_arm"/>
   <end_effector name="right_hand_eef" parent_link="right_gripper" group="right_hand" parent_group="right_arm"/>
-  <virtual_joint name="world_joint" type="fixed" parent_frame="world" child_link="base"/>
-
   <disable_collisions link1="base" link2="torso" reason="Adjacent"/>
   <disable_collisions link1="torso" link2="pedestal" reason="Adjacent"/>
   <disable_collisions link1="torso" link2="head" reason="Adjacent"/>
   <disable_collisions link1="collision_head_link_1" link2="collision_head_link_2" reason="Adjacent"/>
-  <disable_collisions link1="collision_head_link_1" link2="head" reason="Never"/>
-  <disable_collisions link1="collision_head_link_1" link2="screen" reason="Never"/>
-  <disable_collisions link1="collision_head_link_1" link2="sonar_ring" reason="Never"/>
+  <disable_collisions link1="collision_head_link_1" link2="head" reason="Default"/>
+  <disable_collisions link1="collision_head_link_1" link2="screen" reason="Default"/>
+  <disable_collisions link1="collision_head_link_1" link2="sonar_ring" reason="Default"/>
   <disable_collisions link1="collision_head_link_1" link2="torso" reason="Adjacent"/>
-  <disable_collisions link1="collision_head_link_2" link2="head" reason="Never"/>
-  <disable_collisions link1="collision_head_link_2" link2="screen" reason="Never"/>
-  <disable_collisions link1="collision_head_link_2" link2="sonar_ring" reason="Never"/>
+  <disable_collisions link1="collision_head_link_2" link2="head" reason="Default"/>
+  <disable_collisions link1="collision_head_link_2" link2="screen" reason="Default"/>
+  <disable_collisions link1="collision_head_link_2" link2="sonar_ring" reason="Default"/>
   <disable_collisions link1="collision_head_link_2" link2="torso" reason="Adjacent"/>
   <disable_collisions link1="head" link2="screen" reason="Adjacent"/>
   <disable_collisions link1="screen" link2="display" reason="Adjacent"/>
@@ -63,37 +61,37 @@
   <disable_collisions link1="left_upper_shoulder" link2="left_lower_shoulder" reason="Adjacent"/>
   <disable_collisions link1="left_lower_shoulder" link2="left_upper_elbow" reason="Adjacent"/>
   <disable_collisions link1="left_upper_elbow" link2="left_lower_elbow" reason="Adjacent"/>
-  <disable_collisions link1="left_upper_elbow" link2="left_upper_shoulder" reason="Never"/>
-  <disable_collisions link1="left_lower_elbow" link2="left_upper_elbow_visual" reason="Never"/>
+  <disable_collisions link1="left_lower_elbow" link2="left_upper_elbow_visual" reason="Default"/>
   <disable_collisions link1="left_lower_elbow" link2="left_upper_forearm" reason="Adjacent"/>
   <disable_collisions link1="left_upper_forearm" link2="left_lower_forearm" reason="Adjacent"/>
   <disable_collisions link1="left_upper_forearm" link2="left_upper_forearm_visual" reason="Default"/>
-  <disable_collisions link1="left_lower_forearm" link2="left_upper_forearm_visual" reason="Never"/>
+  <disable_collisions link1="left_lower_forearm" link2="left_upper_forearm_visual" reason="Default"/>
   <disable_collisions link1="left_lower_forearm" link2="left_wrist" reason="Adjacent"/>
+  <disable_collisions link1="left_upper_forearm_visual" link2="left_wrist" reason="Default"/>
   <disable_collisions link1="left_wrist" link2="left_hand" reason="Adjacent"/>
   <disable_collisions link1="left_hand" link2="left_gripper_base" reason="Adjacent"/>
   <disable_collisions link1="left_gripper_base" link2="left_gripper" reason="Adjacent"/>
   <disable_collisions link1="left_gripper_base" link2="l_gripper_l_finger" reason="Adjacent"/>
   <disable_collisions link1="left_gripper_base" link2="l_gripper_r_finger" reason="Adjacent"/>
-  <disable_collisions link1="l_gripper_l_finger" link2="l_gripper_r_finger" reason="Never"/>
+  <disable_collisions link1="l_gripper_l_finger" link2="l_gripper_r_finger" reason="Default"/>
   <disable_collisions link1="l_gripper_l_finger" link2="l_gripper_l_finger_tip" reason="Adjacent"/>
   <disable_collisions link1="l_gripper_r_finger" link2="l_gripper_r_finger_tip" reason="Adjacent"/>
   <disable_collisions link1="right_upper_shoulder" link2="right_lower_shoulder" reason="Adjacent"/>
   <disable_collisions link1="right_lower_shoulder" link2="right_upper_elbow" reason="Adjacent"/>
   <disable_collisions link1="right_upper_elbow" link2="right_lower_elbow" reason="Adjacent"/>
-  <disable_collisions link1="right_upper_elbow" link2="right_upper_shoulder" reason="Never"/>
-  <disable_collisions link1="right_lower_elbow" link2="right_upper_elbow_visual" reason="Never"/>
+  <disable_collisions link1="right_lower_elbow" link2="right_upper_elbow_visual" reason="Default"/>
   <disable_collisions link1="right_lower_elbow" link2="right_upper_forearm" reason="Adjacent"/>
   <disable_collisions link1="right_upper_forearm" link2="right_lower_forearm" reason="Adjacent"/>
   <disable_collisions link1="right_upper_forearm" link2="right_upper_forearm_visual" reason="Default"/>
-  <disable_collisions link1="right_lower_forearm" link2="right_upper_forearm_visual" reason="Never"/>
+  <disable_collisions link1="right_lower_forearm" link2="right_upper_forearm_visual" reason="Default"/>
   <disable_collisions link1="right_lower_forearm" link2="right_wrist" reason="Adjacent"/>
+  <disable_collisions link1="right_upper_forearm_visual" link2="right_wrist" reason="Default"/>
   <disable_collisions link1="right_wrist" link2="right_hand" reason="Adjacent"/>
   <disable_collisions link1="right_hand" link2="right_gripper_base" reason="Adjacent"/>
   <disable_collisions link1="right_gripper_base" link2="right_gripper" reason="Adjacent"/>
   <disable_collisions link1="right_gripper_base" link2="r_gripper_l_finger" reason="Adjacent"/>
   <disable_collisions link1="right_gripper_base" link2="r_gripper_r_finger" reason="Adjacent"/>
-  <disable_collisions link1="r_gripper_l_finger" link2="r_gripper_r_finger" reason="Never"/>
+  <disable_collisions link1="r_gripper_l_finger" link2="r_gripper_r_finger" reason="Default"/>
   <disable_collisions link1="r_gripper_l_finger" link2="r_gripper_l_finger_tip" reason="Adjacent"/>
   <disable_collisions link1="r_gripper_r_finger" link2="r_gripper_r_finger_tip" reason="Adjacent"/>
 </robot>

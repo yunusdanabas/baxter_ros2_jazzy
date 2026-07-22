@@ -13,6 +13,21 @@ install(PROGRAMS baxter_examples/moveit_left_tiny.py
   RENAME moveit_left_tiny
 )
 
+install(PROGRAMS baxter_examples/moveit_left_tiny.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME moveit_tiny
+)
+
+install(PROGRAMS baxter_examples/moveit_pose.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME moveit_pose
+)
+
+install(PROGRAMS baxter_examples/ik_service_client.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME ik_service_client
+)
+
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )

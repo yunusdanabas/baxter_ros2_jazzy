@@ -9,7 +9,9 @@ body:
       label: Profile
       options:
         - sim
+        - sim_rviz
         - sim_moveit
+        - sim_moveit_rviz
     validations:
       required: true
   - type: input
@@ -43,7 +45,7 @@ body:
     id: commands
     attributes:
       label: Commands run
-      description: Include launch command and smoke command.
+      description: Include the launch command and the smoke command.
       render: bash
     validations:
       required: true

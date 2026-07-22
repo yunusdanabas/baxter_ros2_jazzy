@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
+import math
+import time
 from typing import List, Optional
 
 import rclpy
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 
@@ -31,8 +34,11 @@ RIGHT_JOINTS = [
 ]
 
 MOTION_JOINT_INDEX = 1
-JOINT_OFFSET_RAD = 0.15
-TRAJECTORY_DURATION_SEC = 2.0
+JOINT_DELTA_RAD = 0.35
+JOINT_LIMIT = (-2.147, 1.047)
+JOINT_LIMIT_MARGIN_RAD = 0.05
+FINAL_TOLERANCE_RAD = 0.02
+TRAJECTORY_DURATION_SEC = 3.0
 
 
 def positions_for_joints(joint_state: JointState, joint_names: List[str]) -> List[float]:
@@ -40,103 +46,211 @@ def positions_for_joints(joint_state: JointState, joint_names: List[str]) -> Lis
     missing = [name for name in joint_names if name not in name_to_position]
     if missing:
         raise RuntimeError(f"Missing joints in /joint_states: {missing}")
-    return [name_to_position[name] for name in joint_names]
+    positions = [name_to_position[name] for name in joint_names]
+    if not all(math.isfinite(position) for position in positions):
+        raise RuntimeError(f"Non-finite positions in /joint_states for {joint_names}")
+    return positions
+
+
+def choose_reversible_target(start: float) -> float:
+    lower, upper = JOINT_LIMIT
+    if not lower <= start <= upper:
+        raise RuntimeError(f"s1 start {start:.3f} rad is outside [{lower}, {upper}]")
+    if start + JOINT_DELTA_RAD <= upper - JOINT_LIMIT_MARGIN_RAD:
+        return start + JOINT_DELTA_RAD
+    if start - JOINT_DELTA_RAD >= lower + JOINT_LIMIT_MARGIN_RAD:
+        return start - JOINT_DELTA_RAD
+    raise RuntimeError(f"No safe reversible s1 target from {start:.3f} rad")
 
 
 class SimTinyTrajectory(Node):
     def __init__(self) -> None:
         super().__init__("sim_tiny_trajectory")
+        self.declare_parameter("cancel_after_sec", 0.0)
+        self._cancel_after_sec = self.get_parameter("cancel_after_sec").value
         self._latest_joint_state: Optional[JointState] = None
-        self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 10)
+        self._joint_state_sequence = 0
+        self._active_goal = None
+        self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 1)
 
     def _joint_state_cb(self, msg: JointState) -> None:
         self._latest_joint_state = msg
+        self._joint_state_sequence += 1
 
-    def wait_for_joint_states(self, timeout_sec: float = 30.0) -> JointState:
-        deadline = self.get_clock().now() + rclpy.duration.Duration(seconds=timeout_sec)
-        while rclpy.ok() and self._latest_joint_state is None:
-            if self.get_clock().now() >= deadline:
-                raise RuntimeError("Timed out waiting for /joint_states")
+    def _wait_for_future(self, future, timeout_sec: float, description: str):
+        deadline = time.monotonic() + timeout_sec
+        while rclpy.ok() and not future.done():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(f"Timed out waiting for {description}")
+            rclpy.spin_once(self, timeout_sec=min(0.1, remaining))
+        if not future.done():
+            raise RuntimeError(f"ROS shut down while waiting for {description}")
+        return future.result()
+
+    def wait_for_fresh_joint_state(
+        self, joint_names: List[str], after_sequence: Optional[int] = None, timeout_sec: float = 10.0
+    ) -> JointState:
+        if after_sequence is None:
+            after_sequence = self._joint_state_sequence
+        deadline = time.monotonic() + timeout_sec
+        while rclpy.ok():
+            if self._joint_state_sequence > after_sequence and self._latest_joint_state is not None:
+                positions_for_joints(self._latest_joint_state, joint_names)
+                return self._latest_joint_state
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("Timed out waiting for a fresh /joint_states sample")
+            rclpy.spin_once(self, timeout_sec=min(0.1, remaining))
+        raise RuntimeError("ROS shut down while waiting for /joint_states")
+
+    def _cancel_active_goal(self) -> bool:
+        if self._active_goal is None:
+            return False
+        cancel_future = self._active_goal.cancel_goal_async()
+        response = self._wait_for_future(cancel_future, 5.0, "goal cancellation")
+        if not response.goals_canceling:
+            raise RuntimeError("Controller did not accept goal cancellation")
+        self.get_logger().info("Active trajectory canceled; controller is holding position")
+        self._active_goal = None
+        return True
+
+    def _check_hold(self, joint_names: List[str]) -> None:
+        first = self.wait_for_fresh_joint_state(joint_names)
+        first_positions = positions_for_joints(first, joint_names)
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
-        if self._latest_joint_state is None:
-            raise RuntimeError("Failed to receive /joint_states")
-        return self._latest_joint_state
+        second = self.wait_for_fresh_joint_state(joint_names)
+        second_positions = positions_for_joints(second, joint_names)
+        drift = max(abs(actual - held) for actual, held in zip(second_positions, first_positions))
+        if drift > FINAL_TOLERANCE_RAD:
+            raise RuntimeError(f"Canceled trajectory did not hold: drift={drift:.4f} rad")
+        self.get_logger().info(f"Cancellation hold verified: max_drift={drift:.4f} rad")
 
-    def send_tiny_trajectory(
+    def send_trajectory(
         self,
         action_name: str,
         joint_names: List[str],
         start_positions: List[float],
-    ) -> None:
+        target_positions: List[float],
+        label: str,
+    ) -> bool:
         client = ActionClient(self, FollowJointTrajectory, action_name)
         if not client.wait_for_server(timeout_sec=30.0):
             raise RuntimeError(f"Action server not available: {action_name}")
 
-        target_positions = start_positions.copy()
-        target_positions[MOTION_JOINT_INDEX] += JOINT_OFFSET_RAD
         motion_joint = joint_names[MOTION_JOINT_INDEX]
         self.get_logger().info(
-            f"{action_name}: moving {motion_joint} "
+            f"{action_name} {label}: {motion_joint} "
             f"{start_positions[MOTION_JOINT_INDEX]:.3f} -> "
             f"{target_positions[MOTION_JOINT_INDEX]:.3f} rad"
         )
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = joint_names
-
         start_point = JointTrajectoryPoint()
         start_point.positions = start_positions
-        start_point.time_from_start.sec = 0
-
         end_point = JointTrajectoryPoint()
         end_point.positions = target_positions
         end_point.time_from_start.sec = int(TRAJECTORY_DURATION_SEC)
         end_point.time_from_start.nanosec = int(
             (TRAJECTORY_DURATION_SEC - int(TRAJECTORY_DURATION_SEC)) * 1e9
         )
-
         goal.trajectory.points = [start_point, end_point]
 
         send_future = client.send_goal_async(goal)
-        rclpy.spin_until_future_complete(self, send_future)
-        goal_handle = send_future.result()
+        goal_handle = self._wait_for_future(send_future, 5.0, f"{action_name} goal response")
         if not goal_handle.accepted:
             raise RuntimeError(f"Goal rejected by {action_name}")
 
+        self._active_goal = goal_handle
         result_future = goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, result_future)
-        result = result_future.result().result
+        result_started = time.monotonic()
+        try:
+            while rclpy.ok() and not result_future.done():
+                if self._cancel_after_sec > 0 and time.monotonic() - result_started >= self._cancel_after_sec:
+                    self._cancel_active_goal()
+                    self._check_hold(joint_names)
+                    return False
+                if time.monotonic() - result_started >= 90.0:
+                    raise RuntimeError(f"Timed out waiting for {action_name} result")
+                rclpy.spin_once(self, timeout_sec=0.1)
+            if not result_future.done():
+                raise RuntimeError(f"ROS shut down while waiting for {action_name} result")
+            result = result_future.result().result
+        except BaseException:
+            self._cancel_active_goal()
+            raise
+        finally:
+            self._active_goal = None
+
         if result.error_code != FollowJointTrajectory.Result.SUCCESSFUL:
             raise RuntimeError(
                 f"{action_name} failed with error_code {result.error_code}: {result.error_string}"
             )
 
-        self.get_logger().info(f"{action_name} succeeded")
+        sequence = self._joint_state_sequence
+        final_state = self.wait_for_fresh_joint_state(joint_names, after_sequence=sequence)
+        actual_positions = positions_for_joints(final_state, joint_names)
+        error = max(abs(actual - target) for actual, target in zip(actual_positions, target_positions))
+        if error > FINAL_TOLERANCE_RAD:
+            raise RuntimeError(f"{action_name} {label} final error {error:.4f} rad exceeds 0.02 rad")
+        self.get_logger().info(f"{action_name} {label} verified: max_error={error:.4f} rad")
+        return True
+
+    def run_arm(self, action_name: str, joint_names: List[str]) -> bool:
+        start_state = self.wait_for_fresh_joint_state(joint_names)
+        start_positions = positions_for_joints(start_state, joint_names)
+        target_positions = start_positions.copy()
+        target_positions[MOTION_JOINT_INDEX] = choose_reversible_target(
+            start_positions[MOTION_JOINT_INDEX]
+        )
+        if not self.send_trajectory(
+            action_name, joint_names, start_positions, target_positions, "outbound"
+        ):
+            return False
+
+        return_state = self.wait_for_fresh_joint_state(joint_names)
+        return_positions = positions_for_joints(return_state, joint_names)
+        return self.send_trajectory(
+            action_name, joint_names, return_positions, start_positions, "return"
+        )
 
 
 def main() -> None:
-    rclpy.init()
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = SimTinyTrajectory()
-
+    exit_code = 0
     try:
-        joint_state = node.wait_for_joint_states()
-        left_start = positions_for_joints(joint_state, LEFT_JOINTS)
-        right_start = positions_for_joints(joint_state, RIGHT_JOINTS)
-
-        node.send_tiny_trajectory(
-            "/left_arm_controller/follow_joint_trajectory",
-            LEFT_JOINTS,
-            left_start,
-        )
-        node.send_tiny_trajectory(
-            "/right_arm_controller/follow_joint_trajectory",
-            RIGHT_JOINTS,
-            right_start,
-        )
-        node.get_logger().info("Tiny trajectories completed for both arms")
+        if not node.run_arm(
+            "/left_arm_controller/follow_joint_trajectory", LEFT_JOINTS
+        ):
+            return
+        if not node.run_arm(
+            "/right_arm_controller/follow_joint_trajectory", RIGHT_JOINTS
+        ):
+            return
+        node.get_logger().info("Reversible trajectories verified for both arms")
+    except KeyboardInterrupt:
+        node.get_logger().warning("Interrupted; canceling the active trajectory")
+        try:
+            node._cancel_active_goal()
+        except RuntimeError as error:
+            node.get_logger().error(str(error))
+            exit_code = 1
+    except Exception as error:
+        node.get_logger().error(str(error))
+        try:
+            node._cancel_active_goal()
+        except RuntimeError as cancel_error:
+            node.get_logger().error(str(cancel_error))
+        exit_code = 1
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
+    if exit_code:
+        raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":

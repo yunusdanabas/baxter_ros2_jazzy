@@ -1,6 +1,7 @@
 controller_manager:
   ros__parameters:
     update_rate: 100
+    enforce_command_limits: true
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -26,6 +27,16 @@ left_arm_controller:
     state_interfaces:
       - position
       - velocity
+    constraints:
+      goal_time: 2.0
+      stopped_velocity_tolerance: 0.01
+      left_s0: {trajectory: 0.2, goal: 0.02}
+      left_s1: {trajectory: 0.2, goal: 0.02}
+      left_e0: {trajectory: 0.2, goal: 0.02}
+      left_e1: {trajectory: 0.2, goal: 0.02}
+      left_w0: {trajectory: 0.2, goal: 0.02}
+      left_w1: {trajectory: 0.2, goal: 0.02}
+      left_w2: {trajectory: 0.2, goal: 0.02}
 
 right_arm_controller:
   ros__parameters:
@@ -42,3 +53,13 @@ right_arm_controller:
     state_interfaces:
       - position
       - velocity
+    constraints:
+      goal_time: 2.0
+      stopped_velocity_tolerance: 0.01
+      right_s0: {trajectory: 0.2, goal: 0.02}
+      right_s1: {trajectory: 0.2, goal: 0.02}
+      right_e0: {trajectory: 0.2, goal: 0.02}
+      right_e1: {trajectory: 0.2, goal: 0.02}
+      right_w0: {trajectory: 0.2, goal: 0.02}
+      right_w1: {trajectory: 0.2, goal: 0.02}
+      right_w2: {trajectory: 0.2, goal: 0.02}

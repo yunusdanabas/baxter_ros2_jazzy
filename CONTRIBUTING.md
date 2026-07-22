@@ -7,7 +7,9 @@ This repo is sim-first. Keep changes inside the profile they actually affect.
 | Profile | Current support label |
 |---|---:|
 | `sim` | passed |
+| `sim_rviz` | passed, manual/local GUI |
 | `sim_moveit` | passed, manual/local smoke |
+| `sim_moveit_rviz` | passed, manual/local GUI |
 | default CI/devcontainer | passed, hardware-free |
 | `hardware_bridge` | blocked |
 | supervised hardware motion | blocked |
@@ -27,7 +29,7 @@ colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
 source install/setup.bash
 ```
 
-Run the smallest smoke check that covers your change. For sim changes, run `docs/ci_release_checklist.md`'s manual sim smoke when possible.
+Run the smallest smoke check that covers your change. Use an isolated `ROS_DOMAIN_ID` and `GZ_PARTITION`; for runtime changes, require numeric final-state evidence and clean teardown as described in `docs/ci_release_checklist.md`.
 
 ## Pin And Source Rules
 

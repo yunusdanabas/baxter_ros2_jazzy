@@ -14,15 +14,18 @@ colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
 source install/setup.bash
 ```
 
+Run release evidence from `bash --noprofile --norc` or an equivalent clean shell. Before rebuilding after a workspace/underlay change, remove generated `build/`, `install/`, and `log/`. Generated setup files must not reference a deleted workspace.
+
 Then run:
 
-| Check | Status in I08 |
+| Check | Current status |
 |---|---:|
 | Python compile/import for local launch/example files | passed |
 | Xacro expansion of `baxter_gz_control.urdf.xacro` | passed |
 | `check_urdf` on generated model | passed |
-| Static SRDF group/state/world-joint checks | passed |
-| Static MoveIt controller/OMPL config checks | passed |
+| Static fixed-world, 17-state/14-command, and neutral-state checks | passed |
+| Finite controller limit/tolerance checks | passed |
+| Static SRDF ACM and MoveIt/OMPL/RViz config checks | passed |
 
 The CI path must not install hardware bridge tooling, ROS 1 dependencies, robot-network dependencies, or Zenoh.
 
@@ -30,11 +33,17 @@ The CI path must not install hardware bridge tooling, ROS 1 dependencies, robot-
 
 Run from the repository root after building:
 
+Choose one unused pair for the entire test:
+
+```bash
+export ROS2CLI_NO_DAEMON=1
+```
+
 Terminal 1:
 
 ```bash
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
-ros2 launch baxter_gz_sim sim.launch.py headless:=true
+ros2 launch baxter_gz_sim sim_rviz.launch.py headless:=false
 ```
 
 Terminal 2:
@@ -42,19 +51,22 @@ Terminal 2:
 ```bash
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 ros2 control list_controllers
+ros2 topic echo /joint_states --once
 ros2 launch baxter_examples sim_tiny_trajectory.launch.py
 ```
 
 Pass criteria:
 
 ```text
-joint_state_broadcaster active
-left_arm_controller active
-right_arm_controller active
-/left_arm_controller/follow_joint_trajectory succeeded
-/right_arm_controller/follow_joint_trajectory succeeded
-Tiny trajectories completed for both arms
+all three controllers active
+17 independent joints with advancing stamps
+fixed world -> base at z=0.92418
+RobotModel and TF status OK
+outbound and return max_error <= 0.02 rad for each arm
+motion visible in Gazebo and RViz
 ```
+
+Run cancellation separately with `ros2 run baxter_examples sim_tiny_trajectory --ros-args -p use_sim_time:=true -p cancel_after_sec:=1.0`. Require accepted cancellation, held position, bounded exit, and no traceback.
 
 ## Manual MoveIt Sim Smoke
 
@@ -64,7 +76,8 @@ Terminal 1:
 
 ```bash
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
-ros2 launch baxter_moveit_config sim_moveit.launch.py headless:=true
+export ROS2CLI_NO_DAEMON=1
+ros2 launch baxter_moveit_config sim_moveit_rviz.launch.py headless:=false
 ```
 
 Terminal 2:
@@ -73,16 +86,32 @@ Terminal 2:
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 ros2 action list
 ros2 run baxter_examples moveit_left_tiny
+ros2 run baxter_examples moveit_tiny --ros-args -p group:=right_arm
+ros2 run baxter_examples moveit_tiny --ros-args -p group:=both_arms
+ros2 run baxter_examples moveit_pose --ros-args -p group:=left_arm -p delta_z:=0.05
+ros2 run baxter_examples ik_service_client --ros-args -p limb:=left
+ros2 run baxter_examples ik_service_client --ros-args -p limb:=left -p x:=9.0
 ```
 
 Pass criteria:
 
 ```text
 /move_action
-MoveIt left-arm plan+execute passed
+move_group logs "You can start planning now!" with pipeline ompl
+no missing head/source-finger state warning
+left, right, and both-arm outbound/return max_error <= 0.02 rad
+moveit_pose reaches both absolute and delta targets
+ik_service_client solves left/right and exits non-zero on an unreachable pose
+motion visible in Gazebo
+robot visible in RViz via the RobotModel/TF displays
+OMPL and RRTConnectkConfigDefault available in MotionPlanning
 ```
 
-Full Gazebo plus MoveIt runtime is manual/local smoke for now because I07 observed a possible `move_group` SIGINT teardown segfault after successful execution.
+The MotionPlanning panel must load: no `Exception caught while processing action 'loadRobotModel'`, a populated planner dropdown instead of `NO PLANNING LIBRARY LOADED`, a 6-DOF interactive marker on each gripper, and no `No robot state or robot model loaded`. A comma-decimal `LC_NUMERIC` is the known trigger for all four at once; see `known_issues.md`.
+
+Run `moveit_tiny` once with `-p cancel_after_sec:=1.0`. Then send one Ctrl+C to the owning launch, wait, and require no Gazebo, bridge, controller, robot-state-publisher, MoveIt, or RViz process remains. Gazebo `-2` is expected after SIGINT; a hang, leftover process, or `move_group` crash fails the gate.
+
+Retain the launch logs, numeric outputs, environment values, and before/target/return screenshots or video before citing them as evidence.
 
 ## Hardware Gates Not Yet Run
 

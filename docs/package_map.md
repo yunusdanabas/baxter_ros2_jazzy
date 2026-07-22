@@ -5,9 +5,9 @@
 | Package | Step | Purpose | Support level |
 |---|---:|---|---:|
 | `baxter_bringup` | I03 | Minimal model launch and `robot_state_publisher`. | passed |
-| `baxter_gz_sim` | I04-I06 | Gazebo Harmonic launch, clock bridge, arm controllers. | passed |
-| `baxter_examples` | I06-I07 | `sim_tiny_trajectory` and MoveIt left-arm smoke command. | passed |
-| `baxter_moveit_config` | I07 | MoveIt 2 sim config for the arm controllers. | passed, manual/local smoke |
+| `baxter_gz_sim` | I04-I06, I15 | Gazebo Harmonic, deterministic mount, arm controllers, 17-joint state, plain RViz. | passed |
+| `baxter_examples` | I06-I07, I15 | Reversible direct and MoveIt motion/cancellation checks. | passed |
+| `baxter_moveit_config` | I07, I15 | Readiness-gated MoveIt 2, IK/pose clients, MotionPlanning RViz. | passed |
 
 ## Imported ECN Packages
 

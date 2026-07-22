@@ -1,15 +1,59 @@
+import os
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    OpaqueFunction,
+    RegisterEventHandler,
+    Shutdown,
+)
 from launch.event_handlers import OnProcessExit
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, FindExecutable, IfElseSubstitution, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (
+    Command,
+    FindExecutable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
+def launch_gazebo(context):
+    headless = LaunchConfiguration("headless").perform(context).lower() == "true"
+    command = ["gz", "sim", "-r"]
+    if headless:
+        command.append("-s")
+    command.append("empty.sdf")
+    if not headless:
+        gui_config = PathJoinSubstitution(
+            [FindPackageShare("baxter_gz_sim"), "config", "gz_gui.config"]
+        ).perform(context)
+        command.extend(["--gui-config", gui_config])
+    command.extend(["--force-version", "8"])
+    plugin_path = ":".join(
+        path
+        for path in (
+            os.environ.get("GZ_SIM_SYSTEM_PLUGIN_PATH"),
+            os.environ.get("LD_LIBRARY_PATH"),
+        )
+        if path
+    )
+    return [
+        ExecuteProcess(
+            cmd=command,
+            name="gazebo",
+            output="screen",
+            additional_env={
+                "GZ_SIM_SYSTEM_PLUGIN_PATH": plugin_path,
+            },
+            on_exit=Shutdown(),
+        )
+    ]
+
+
 def generate_launch_description():
-    headless = LaunchConfiguration("headless")
     controllers_yaml = PathJoinSubstitution(
         [FindPackageShare("baxter_gz_sim"), "config", "ros2_controllers.yaml"]
     )
@@ -19,21 +63,6 @@ def generate_launch_description():
     robot_description = ParameterValue(
         Command([FindExecutable(name="xacro"), " ", baxter_xacro]),
         value_type=str,
-    )
-
-    gazebo = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution(
-                [FindPackageShare("ros_gz_sim"), "launch", "gz_sim.launch.py"]
-            )
-        ),
-        launch_arguments={
-            "gz_args": IfElseSubstitution(
-                headless,
-                if_value="-r -s empty.sdf",
-                else_value="-r empty.sdf",
-            )
-        }.items(),
     )
 
     clock_bridge = Node(
@@ -54,7 +83,7 @@ def generate_launch_description():
     spawn = Node(
         package="ros_gz_sim",
         executable="create",
-        arguments=["-topic", "/robot_description", "-name", "baxter", "-z", "2.0"],
+        arguments=["-topic", "/robot_description", "-name", "baxter"],
         output="screen",
     )
 
@@ -82,7 +111,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("headless", default_value="true"),
-            gazebo,
+            OpaqueFunction(function=launch_gazebo),
             clock_bridge,
             robot_state_publisher,
             spawn,

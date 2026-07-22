@@ -32,10 +32,16 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             Node(
-                package="moveit_ros_move_group",
-                executable="move_group",
+                package="baxter_moveit_config",
+                executable="baxter_move_group",
                 output="screen",
-                parameters=[moveit_config.to_dict(), {"use_sim_time": use_sim_time}],
+                parameters=[
+                    moveit_config.to_dict(),
+                    {
+                        "use_sim_time": use_sim_time,
+                        "publish_robot_description_semantic": True,
+                    },
+                ],
             ),
         ]
     )
