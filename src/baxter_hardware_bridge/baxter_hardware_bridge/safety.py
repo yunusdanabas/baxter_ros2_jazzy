@@ -28,7 +28,7 @@ class SafetyStateChecker:
     ESTOP_BUTTON_UNKNOWN = 2
     ESTOP_BUTTON_RELEASED = 3
 
-    def __init__(self, node: Node, topic: str = ROBOT_STATE_TOPIC):
+    def __init__(self, node: Node, topic: str = ROBOT_STATE_TOPIC, callback_group=None):
         self._node = node
         self._latest: Optional[AssemblyState] = None
         self._stamp_ns: int = 0
@@ -39,7 +39,7 @@ class SafetyStateChecker:
             depth=10,
         )
         node.create_subscription(
-            AssemblyState, topic, self._cb, qos
+            AssemblyState, topic, self._cb, qos, callback_group=callback_group
         )
 
     def _cb(self, msg: AssemblyState) -> None:

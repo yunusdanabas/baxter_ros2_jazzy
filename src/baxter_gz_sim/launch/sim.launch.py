@@ -3,12 +3,14 @@ import os
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    EmitEvent,
     ExecuteProcess,
     OpaqueFunction,
     RegisterEventHandler,
     Shutdown,
 )
 from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown as ShutdownEvent
 from launch.substitutions import (
     Command,
     FindExecutable,
@@ -108,6 +110,13 @@ def generate_launch_description():
         output="screen",
     )
 
+    def start_controllers_after_spawn(event, _context):
+        if event.returncode == 0:
+            return [joint_state_broadcaster_spawner]
+        return [
+            EmitEvent(event=ShutdownEvent(reason="Baxter spawn failed")),
+        ]
+
     return LaunchDescription(
         [
             DeclareLaunchArgument("headless", default_value="true"),
@@ -118,7 +127,7 @@ def generate_launch_description():
             RegisterEventHandler(
                 OnProcessExit(
                     target_action=spawn,
-                    on_exit=[joint_state_broadcaster_spawner],
+                    on_exit=start_controllers_after_spawn,
                 )
             ),
             RegisterEventHandler(

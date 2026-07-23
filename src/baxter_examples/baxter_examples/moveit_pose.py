@@ -58,6 +58,7 @@ class MoveItPose(Node):
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
         self._client = ActionClient(self, MoveGroup, "/move_action")
+        self._active_goal = None
 
     def _wait_for_future(self, future, timeout_sec: float, description: str):
         deadline = time.monotonic() + timeout_sec
@@ -69,6 +70,17 @@ class MoveItPose(Node):
         if not future.done():
             raise RuntimeError(f"ROS shut down while waiting for {description}")
         return future.result()
+
+    def _cancel_active_goal(self) -> bool:
+        if self._active_goal is None:
+            return False
+        cancel_future = self._active_goal.cancel_goal_async()
+        response = self._wait_for_future(cancel_future, 5.0, "MoveGroup cancellation")
+        if not response.goals_canceling:
+            raise RuntimeError("MoveGroup did not accept goal cancellation")
+        self.get_logger().info("MoveGroup goal canceled; controllers are holding position")
+        self._active_goal = None
+        return True
 
     def _require_sim_move_group(self) -> None:
         client = AsyncParameterClient(self, "/move_group")
@@ -204,18 +216,38 @@ class MoveItPose(Node):
         if not goal_handle.accepted:
             raise RuntimeError("MoveGroup goal rejected")
 
+        self._active_goal = goal_handle
         result_future = goal_handle.get_result_async()
         deadline = time.monotonic() + 120.0
-        while rclpy.ok() and not result_future.done():
-            if time.monotonic() >= deadline:
-                raise RuntimeError("Timed out waiting for MoveGroup result")
-            rclpy.spin_once(self, timeout_sec=0.1)
-        if not result_future.done():
-            raise RuntimeError("ROS shut down while waiting for MoveGroup result")
+        try:
+            while rclpy.ok() and not result_future.done():
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Timed out waiting for MoveGroup result")
+                rclpy.spin_once(self, timeout_sec=0.1)
+            if not result_future.done():
+                raise RuntimeError("ROS shut down while waiting for MoveGroup result")
+            result = result_future.result().result
+        except BaseException:
+            # A failing cleanup must not replace the exception being propagated.
+            # main() dispatches on its type, so letting a cancellation
+            # RuntimeError escape here turns Ctrl-C into a misleading error.
+            try:
+                self._cancel_active_goal()
+            except Exception as cancel_error:
+                self.get_logger().error(f"Cancellation also failed: {cancel_error}")
+            raise
+        finally:
+            self._active_goal = None
 
-        result = result_future.result().result
         if result.error_code.val != 1:
             raise RuntimeError(f"MoveGroup failed with error code {result.error_code.val}")
+
+        points = len(result.planned_trajectory.joint_trajectory.points)
+        if self._plan_only:
+            self.get_logger().info(
+                f"MoveIt {self._group} pose plan succeeded: points={points}"
+            )
+            return
 
         final_x, final_y, final_z = self._lookup_tip_pose()
         error = math.sqrt(
@@ -228,7 +260,6 @@ class MoveItPose(Node):
                 f"Tip position error {error:.4f} m exceeds {self._position_tolerance * 2.0:.4f} m"
             )
 
-        points = len(result.planned_trajectory.joint_trajectory.points)
         self.get_logger().info(
             f"MoveIt {self._group} pose goal reached: points={points}, position_error={error:.4f} m"
         )
@@ -241,10 +272,19 @@ def main() -> None:
     try:
         node.run()
     except KeyboardInterrupt:
-        node.get_logger().warning("Interrupted")
+        node.get_logger().warning("Interrupted; canceling the active MoveGroup goal")
+        # Interrupted is not success — callers check $?.
         exit_code = 1
+        try:
+            node._cancel_active_goal()
+        except RuntimeError as error:
+            node.get_logger().error(str(error))
     except Exception as error:
         node.get_logger().error(str(error))
+        try:
+            node._cancel_active_goal()
+        except RuntimeError as cancel_error:
+            node.get_logger().error(str(cancel_error))
         exit_code = 1
     finally:
         node.destroy_node()

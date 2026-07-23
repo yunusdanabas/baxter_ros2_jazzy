@@ -57,7 +57,7 @@ jobs:
         run: |
           source /opt/ros/jazzy/setup.bash
           source install/setup.bash
-          python3 -m compileall -q src/baxter_bringup src/baxter_gz_sim src/baxter_moveit_config src/baxter_examples
+          python3 -m compileall -q src/baxter_bringup src/baxter_gz_sim src/baxter_moveit_config src/baxter_examples src/baxter_hardware_bridge
           python3 - <<'PY'
           import importlib.util
           from pathlib import Path
@@ -72,6 +72,11 @@ jobs:
               Path('src/baxter_moveit_config/scripts/wait_for_sim_ready.py'),
               Path('src/baxter_examples/baxter_examples/sim_tiny_trajectory.py'),
               Path('src/baxter_examples/baxter_examples/moveit_left_tiny.py'),
+              Path('src/baxter_hardware_bridge/launch/hardware_bringup.launch.py'),
+              Path('src/baxter_hardware_bridge/launch/dry_run.launch.py'),
+              Path('src/baxter_hardware_bridge/baxter_hardware_bridge/follow_joint_trajectory_shim.py'),
+              Path('src/baxter_hardware_bridge/baxter_hardware_bridge/dry_run_test.py'),
+              Path('src/baxter_hardware_bridge/baxter_hardware_bridge/executor_util.py'),
           ]
           for path in paths:
               spec = importlib.util.spec_from_file_location(path.stem.replace('.', '_'), path)
@@ -79,6 +84,49 @@ jobs:
               spec.loader.exec_module(module)
           print('python_import_checks=passed')
           PY
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          # A goal-cancelling cleanup that itself raises must not replace the
+          # exception being propagated: main() dispatches on its type, so a
+          # cancellation RuntimeError escaping here turns Ctrl-C into a
+          # misleading "Exception" path and loses the original cause.
+          # ponytail: checks the handler's shape, not its behaviour. Proving it
+          # behaviourally needs a live action server (and move_group for two of
+          # the three), which does not fit hardware-free CI.
+          clients = [
+              Path('src/baxter_examples/baxter_examples/sim_tiny_trajectory.py'),
+              Path('src/baxter_examples/baxter_examples/moveit_left_tiny.py'),
+              Path('src/baxter_examples/baxter_examples/moveit_pose.py'),
+          ]
+          bad = []
+          for path in clients:
+              for handler in ast.walk(ast.parse(path.read_text())):
+                  if not isinstance(handler, ast.ExceptHandler):
+                      continue
+                  if getattr(handler.type, 'id', None) != 'BaseException':
+                      continue
+                  for node in handler.body:
+                      # A bare call to the canceller, not wrapped in its own try.
+                      if (isinstance(node, ast.Expr)
+                              and isinstance(node.value, ast.Call)
+                              and getattr(node.value.func, 'attr', None)
+                              == '_cancel_active_goal'):
+                          bad.append(f'{path}:{node.lineno}')
+          if bad:
+              raise SystemExit(
+                  'unguarded _cancel_active_goal() in an except BaseException '
+                  'handler; a failing cancel would replace the original '
+                  'exception: ' + ', '.join(bad))
+          print('cleanup_handler_checks=passed')
+          PY
+
+      - name: Hardware bridge dry-run
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          ros2 run baxter_hardware_bridge dry_run_test
 
       - name: Model and MoveIt config checks
         run: |

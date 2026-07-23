@@ -52,7 +52,7 @@ Hardware support remains blocked by:
 - I11 safety/action-shim gate.
 - I12 supervised tiny motion gate.
 
-Do not merge hardware bridge tooling, action shims, gripper implementation, Zenoh fallback, or hardware examples into the default sim path without new gates and logs.
+The prep package `baxter_hardware_bridge` and `docs/hardware_runbook.md` are already in tree as prep-only. Do not expand them into a support claim, and do not merge gripper implementation, Zenoh fallback, or hardware examples into the default sim path without new gates and logs.
 
 ## Ownership Backlog
 

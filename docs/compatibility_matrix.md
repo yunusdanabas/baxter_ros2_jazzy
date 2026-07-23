@@ -24,7 +24,7 @@ Statuses are based on I01-I09, I14, and I15 gate evidence. Anything not listed a
 | `sim_moveit` | passed, manual/local smoke | Readiness-gated OMPL planning and execution. |
 | `sim_moveit_rviz` | passed, manual/local GUI | MotionPlanning on `both_arms`, OMPL planner list, and a 6-DOF marker on each gripper. |
 | `hardware_bridge` | blocked | I10 not run. |
-| `hardware_motion` | blocked | I12 not run. |
+| `supervised hardware motion` | blocked | I12 not run. |
 | `experimental_zenoh` | deferred | Not in default install/devcontainer/CI. |
 
 ## Scoped Limitations

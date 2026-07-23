@@ -20,24 +20,25 @@ Then run:
 
 | Check | Current status |
 |---|---:|
-| Python compile/import for local launch/example files | passed |
+| Python compile/import for local launch/example/hardware-bridge files | passed |
+| Hardware-free `baxter_hardware_bridge` dry_run_test | passed |
 | Xacro expansion of `baxter_gz_control.urdf.xacro` | passed |
 | `check_urdf` on generated model | passed |
 | Static fixed-world, 17-state/14-command, and neutral-state checks | passed |
 | Finite controller limit/tolerance checks | passed |
 | Static SRDF ACM and MoveIt/OMPL/RViz config checks | passed |
 
-The CI path must not install hardware bridge tooling, ROS 1 dependencies, robot-network dependencies, or Zenoh.
+The CI path must not install ROS 1 dependencies, robot-network dependencies, or Zenoh. Local `baxter_hardware_bridge` dry-run is hardware-free and is part of CI.
 
 ## Manual Sim Smoke
 
 Run from the repository root after building:
 
-Choose one unused pair for the entire test:
-
 ```bash
 export ROS2CLI_NO_DAEMON=1
 ```
+
+Run one simulation at a time.
 
 Terminal 1:
 

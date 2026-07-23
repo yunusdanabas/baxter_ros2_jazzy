@@ -37,17 +37,13 @@ class WaitForSimReady(Node):
         self._timeout_sec = self.get_parameter("timeout_sec").value
         self._joint_names = set()
         self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 1)
+        self._action_names = [
+            "/left_arm_controller/follow_joint_trajectory",
+            "/right_arm_controller/follow_joint_trajectory",
+        ]
         self._action_clients = [
-            ActionClient(
-                self,
-                FollowJointTrajectory,
-                "/left_arm_controller/follow_joint_trajectory",
-            ),
-            ActionClient(
-                self,
-                FollowJointTrajectory,
-                "/right_arm_controller/follow_joint_trajectory",
-            ),
+            ActionClient(self, FollowJointTrajectory, name)
+            for name in self._action_names
         ]
 
     def _joint_state_cb(self, msg: JointState) -> None:
@@ -63,10 +59,15 @@ class WaitForSimReady(Node):
                     "Simulation ready: both arm actions and all 17 independent joints are available"
                 )
                 return
-        missing = sorted(REQUIRED_JOINTS - self._joint_names)
+        missing_joints = sorted(REQUIRED_JOINTS - self._joint_names)
+        missing_actions = [
+            name
+            for name, client in zip(self._action_names, self._action_clients)
+            if not client.server_is_ready()
+        ]
         raise RuntimeError(
             f"Simulation readiness timed out after {self._timeout_sec:.1f}s; "
-            f"missing_joints={missing}"
+            f"missing_joints={missing_joints}; missing_actions={missing_actions}"
         )
 
 

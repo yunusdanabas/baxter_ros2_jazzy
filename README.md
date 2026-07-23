@@ -11,7 +11,7 @@ ROS 2 Jazzy workspace for Baxter simulation first: Gazebo Harmonic, `ros2_contro
 | MoveIt sim | passed, manual/local smoke | `docs/moveit_guide.md` |
 | Gazebo + MoveIt RViz | manual/local GUI | `docs/moveit_guide.md` |
 | Default CI/devcontainer | passed, hardware-free | `docs/ci_release_checklist.md` |
-| Hardware bridge | blocked | I10 is not started; no beginner docs yet |
+| Hardware bridge | blocked | Prep exists (`baxter_hardware_bridge`, `docs/hardware_runbook.md`); I10 gate not run — unsupported |
 | Supervised hardware motion | blocked | I12 is not started; no support claim |
 | Zenoh/compatibility fallbacks | deferred | Not in the default path |
 
@@ -27,6 +27,7 @@ Implemented local packages:
 | `baxter_gz_sim` | Gazebo Harmonic, fixed pedestal mount, 17-joint state, two arm controllers, plain RViz profile. |
 | `baxter_examples` | Reversible direct and MoveIt motion/cancellation checks. |
 | `baxter_moveit_config` | Readiness-gated MoveIt 2, IK/pose clients, and a MotionPlanning RViz profile. |
+| `baxter_hardware_bridge` | Prep-only action shims and dry-run; unsupported until the I10 gate. |
 
 Imported dependency:
 
@@ -77,7 +78,7 @@ Expected result: both arms reach a bounded target within `0.02 rad` and return t
 
 ## Devcontainer And CI
 
-The default devcontainer and GitHub Actions workflow install only the sim/MoveIt dependencies. They do not install ROS 1, hardware bridge packages, robot-network tooling, or Zenoh.
+The default devcontainer and GitHub Actions workflow install only the sim/MoveIt dependencies. They do not install ROS 1, robot-network tooling, or Zenoh. The local `baxter_hardware_bridge` package builds in the default `colcon` path (hardware-free dry-run only); real Baxter access remains blocked.
 
 CI checks the pinned SHA, runs `rosdep install`, builds with `colcon build --base-paths src --symlink-install --packages-skip baxter_bridge`, compiles/imports local Python files, loads the Gazebo Xacro/URDF, and statically checks MoveIt config.
 

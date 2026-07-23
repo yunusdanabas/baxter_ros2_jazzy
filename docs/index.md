@@ -1,6 +1,6 @@
 # Baxter ROS 2 Jazzy Docs
 
-This documentation covers the sim-first baseline that has passed gates in I01-I09 and the I14 release-hardening baseline. Hardware bridge and supervised hardware motion are not documented as supported modes yet.
+This documentation covers the sim-first baseline through I15, plus I10-prep hardware tooling that remains unsupported until the I10 gate. Hardware bridge and supervised hardware motion are not support claims yet.
 
 ## Mode Selector
 
@@ -11,8 +11,8 @@ This documentation covers the sim-first baseline that has passed gates in I01-I0
 | MoveIt 2 sim | passed, manual/local smoke | `moveit_guide.md` |
 | Gazebo + MoveIt RViz | passed, manual/local GUI | `moveit_guide.md` |
 | Default CI/devcontainer | passed, hardware-free | `ci_release_checklist.md` |
-| Hardware bridge | blocked | Not in default docs |
-| Hardware motion | blocked | Not supported |
+| Hardware bridge | blocked (prep-only) | `hardware_runbook.md` — lab prep; not a support claim |
+| Supervised hardware motion | blocked | Not supported |
 | Zenoh/compatibility fallback | deferred | Not in default docs |
 
 ## Recommended Path
@@ -27,6 +27,9 @@ This documentation covers the sim-first baseline that has passed gates in I01-I0
 | Doc | Purpose |
 |---|---|
 | `known_issues.md` | Resolved defects with their root cause, and the benign log noise to ignore. |
+| `hardware_runbook.md` | Prep-only lab procedures for the hardware bridge; unsupported until I10. |
+| `hardware_test_commands.md` | Copy-paste command sheet for a full hardware session, with the interlock and malformed-goal checks. |
+| `i12_completion_plan.md` | Working plan for finishing I12: remaining hardening, the checking/polish pass, and the robot-day sequence. Retire once the I12 gate passes. |
 | `package_map.md` | What is implemented, imported, skipped, and deferred. |
 | `repos_and_pins.md` | Default `.repos`, ECN SHA pin, and update rule. |
 | `licensing_and_sources.md` | Source/license status and local BSD-3-Clause project license. |

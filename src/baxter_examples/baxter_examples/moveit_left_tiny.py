@@ -222,7 +222,13 @@ class MoveItTiny(Node):
                 raise RuntimeError("ROS shut down while waiting for MoveGroup result")
             result = result_future.result().result
         except BaseException:
-            self._cancel_active_goal()
+            # A failing cleanup must not replace the exception being propagated.
+            # main() dispatches on its type, so letting a cancellation
+            # RuntimeError escape here turns Ctrl-C into a misleading error.
+            try:
+                self._cancel_active_goal()
+            except Exception as cancel_error:
+                self.get_logger().error(f"Cancellation also failed: {cancel_error}")
             raise
         finally:
             self._active_goal = None

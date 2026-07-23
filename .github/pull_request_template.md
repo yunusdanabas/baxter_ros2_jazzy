@@ -29,7 +29,7 @@
 ## Safety Boundary
 
 - [ ] This PR does not claim hardware support without I10-I12 evidence
-- [ ] This PR does not add hardware bridge tooling, action shims, grippers, compatibility layers, Zenoh fallback, or hardware examples to the default sim path
+- [ ] This PR does not claim hardware support or expand prep-only bridge tooling into a support claim; grippers, Zenoh fallback, and hardware examples stay out of the default sim path unless new gates and logs exist
 - [ ] Beginner and release docs do not teach raw safety-topic publishing or hardware enable commands
 
 ## Notes

@@ -8,18 +8,36 @@ All notable changes for this repository are tracked by release profile.
 
 - `ik_service_client`: ROS 2 port of the ROS 1 Baxter IK example, querying MoveIt `/compute_ik` instead of the robot-only `baxter_core_msgs/SolvePositionIK`.
 - `docs/known_issues.md`: resolved defects with their root cause, and the benign log noise to ignore.
+- Hardware-free `dry_run_test` mid-goal cancel and unsafe-abort coverage; CI now compiles and runs `baxter_hardware_bridge` dry-run.
+- Trajectory shim path-tolerance monitoring (`path_tolerance_rad`, default 0.2) and a stopped-velocity check at goal end (`stopped_velocity_tolerance`, default 0.25, after a `goal_time_sec` settle window of 0.1), all three from Rethink's `PositionJointTrajectoryActionServer.cfg`. They abort with the standard `PATH_TOLERANCE_VIOLATED` / `GOAL_TOLERANCE_VIOLATED` codes and **hold**, unlike a safety abort which stops commanding. Path tolerance measures against the command actually published rather than the raw interpolated setpoint, and holds the *measured* pose so a blocked arm is not driven further into whatever is blocking it. It is skipped in `mock_mode`, where nothing is published and the arm cannot track by construction.
+- `mock_mode` launch argument on `dry_run.launch.py`, so the closed-loop rehearsal against `mock_robot` is one launch instead of three hand-started nodes.
+- `dry_run_test` cases for both tolerance branches and for the clamp-limited velocity rejection, plus `MockRobot.command_feedthrough` / `MockRobot.velocity` to drive them; the suite is now 20 cases.
 
 ### Fixed
 
+- `sim_tiny_trajectory`, `moveit_pose` and `moveit_left_tiny` losing the original exception when an interrupt coincided with a failing cancellation. The `except BaseException` cleanup called `_cancel_active_goal()` unguarded, so a `RuntimeError` from the cancel replaced the in-flight `KeyboardInterrupt` before the bare `raise` was reached; `main()` then dispatched to `except Exception` and reported the cancellation error instead of the interrupt. The cleanup is now wrapped and its failure logged, and CI rejects the unguarded shape.
+- Goal validation accepting a wrist segment the shim could never deliver. `JOINT_LIMITS` allows 4.0 rad/s on `w0`/`w1`/`w2` but `max_step_rad_per_cycle` caps every joint at 2.0 rad/s, so such a goal was accepted and then fell progressively behind its setpoint. Validation now rejects against `min(URDF limit, max_step_rad_per_cycle * command_rate)` and names which bound applied.
+- `_hold_position()` republishing through a safety violation for up to `hold_duration_sec`, contradicting the shim's own "stop commanding on unsafe" rule. A hold in progress is now abandoned.
+- The shim latching a velocity of `0.0` for any joint missing from a short `JointState.velocity` array, which could report a moving joint as stopped. It now preserves the last known value, matching how position is handled.
+- `dry_run.launch.py` hardcoding `mock_mode: True` for both shims, so no `JointCommand` was ever published, the mock arm could never move, and every trajectory run against that launch file failed its position check.
 - `moveit_pose` relative motion (`delta_x`/`delta_y`/`delta_z`), which aborted with `The parameter 'x' is not initialized` because `get_parameter()` raises on a declared-but-unset statically typed parameter.
 - `sim_moveit.launch.py` starting no RViz under `headless:=false`; `rviz` now defaults to the inverse of `headless`.
 - The RViz MotionPlanning display failing to load its robot model. Qt's `QApplication` calls `setlocale(LC_ALL, "")` before `rclcpp::init`, so in a comma-decimal locale rcl's YAML parser read every double as a string and `loadRobotModel` died on `InvalidParameterTypeException`. The RViz node now runs with `LC_NUMERIC=C`.
+- Hardware trajectory shim production `main()` blocking cancel/safety mid-goal under single-threaded `spin()`; production and dry-run now share `MultiThreadedExecutor`.
+- Safety abort no longer publishes hold commands; cancel holds last commanded pose; trajectory points with wrong position length are rejected.
+- Shim commanding a large jump on the first goal after startup, because the hold/interpolation state started at all-zeros instead of the measured pose; it is now seeded from `/robot/joint_states` at each goal start, and goals are rejected until joint states have been seen.
+- Shim executing two goals concurrently once it moved to `MultiThreadedExecutor`, letting two threads publish conflicting `JointCommand` values; a second goal is now rejected while one is running.
+- `py_bridge` ROS 2 publishes from TCPROS threads, silent wrong-IP fallback, blocking `sendall`, incomplete unregister, and unbounded TCPROS frames. ROS 1 publishers now unregister on shutdown, and the inbound TCPROS handshake is time-bounded.
+- `scripts/run_bridge.sh` and `docker/bridge_entrypoint.sh` forcing `ROS_DOMAIN_ID=42` after the documented workflow dropped domain isolation, which silently split the bridge and the action shim onto different domains.
+- `sim.launch.py` starting controllers after a failed spawn; `wait_for_sim_ready` timeout now reports missing actions as well as joints.
+- `moveit_pose` leaving an in-flight MoveGroup goal on interrupt.
 
 ### Changed
 
 - Dropped `ROS_DOMAIN_ID`/`GZ_PARTITION` isolation from the documented workflow; run one simulation at a time.
 - Stopped passing `joint_limits` to the RViz node and aligned `moveit.rviz` with the ROS 1 MoveIt layout.
 - Added checked-in `sim_rviz` and `sim_moveit_rviz` profiles.
+- Documented `baxter_hardware_bridge` as prep-only / unsupported until I10.
 
 ### Known Issues
 

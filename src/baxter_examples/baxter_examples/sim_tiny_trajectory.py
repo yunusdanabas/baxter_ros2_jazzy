@@ -39,6 +39,7 @@ JOINT_LIMIT = (-2.147, 1.047)
 JOINT_LIMIT_MARGIN_RAD = 0.05
 FINAL_TOLERANCE_RAD = 0.02
 TRAJECTORY_DURATION_SEC = 3.0
+SETTLE_TIMEOUT_SEC = 2.0
 
 
 def positions_for_joints(joint_state: JointState, joint_names: List[str]) -> List[float]:
@@ -67,11 +68,24 @@ class SimTinyTrajectory(Node):
     def __init__(self) -> None:
         super().__init__("sim_tiny_trajectory")
         self.declare_parameter("cancel_after_sec", 0.0)
+        # Defaults are the sim controllers/topic. Hardware overrides these with
+        # the shim actions and the bridged /robot/joint_states; the motion logic
+        # (measured start, reversible target, tolerance check) is identical.
+        self.declare_parameter(
+            "left_action", "/left_arm_controller/follow_joint_trajectory"
+        )
+        self.declare_parameter(
+            "right_action", "/right_arm_controller/follow_joint_trajectory"
+        )
+        self.declare_parameter("joint_states_topic", "/joint_states")
         self._cancel_after_sec = self.get_parameter("cancel_after_sec").value
+        self.left_action = self.get_parameter("left_action").value
+        self.right_action = self.get_parameter("right_action").value
+        joint_states_topic = self.get_parameter("joint_states_topic").value
         self._latest_joint_state: Optional[JointState] = None
         self._joint_state_sequence = 0
         self._active_goal = None
-        self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 1)
+        self.create_subscription(JointState, joint_states_topic, self._joint_state_cb, 1)
 
     def _joint_state_cb(self, msg: JointState) -> None:
         self._latest_joint_state = msg
@@ -149,17 +163,24 @@ class SimTinyTrajectory(Node):
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = joint_names
-        start_point = JointTrajectoryPoint()
-        start_point.positions = start_positions
+        # No point at time_from_start=0. The shim seeds its interpolation from
+        # the measured pose, so a leading t=0 point is redundant, and the shim
+        # now rejects one — it would otherwise be commanded in a single step.
         end_point = JointTrajectoryPoint()
         end_point.positions = target_positions
         end_point.time_from_start.sec = int(TRAJECTORY_DURATION_SEC)
         end_point.time_from_start.nanosec = int(
             (TRAJECTORY_DURATION_SEC - int(TRAJECTORY_DURATION_SEC)) * 1e9
         )
-        goal.trajectory.points = [start_point, end_point]
+        goal.trajectory.points = [end_point]
 
-        send_future = client.send_goal_async(goal)
+        feedback_count = 0
+
+        def on_feedback(_msg) -> None:
+            nonlocal feedback_count
+            feedback_count += 1
+
+        send_future = client.send_goal_async(goal, feedback_callback=on_feedback)
         goal_handle = self._wait_for_future(send_future, 5.0, f"{action_name} goal response")
         if not goal_handle.accepted:
             raise RuntimeError(f"Goal rejected by {action_name}")
@@ -180,7 +201,13 @@ class SimTinyTrajectory(Node):
                 raise RuntimeError(f"ROS shut down while waiting for {action_name} result")
             result = result_future.result().result
         except BaseException:
-            self._cancel_active_goal()
+            # A failing cleanup must not replace the exception being propagated.
+            # main() dispatches on its type, so letting a cancellation
+            # RuntimeError escape here turns Ctrl-C into a misleading error.
+            try:
+                self._cancel_active_goal()
+            except Exception as cancel_error:
+                self.get_logger().error(f"Cancellation also failed: {cancel_error}")
             raise
         finally:
             self._active_goal = None
@@ -190,13 +217,42 @@ class SimTinyTrajectory(Node):
                 f"{action_name} failed with error_code {result.error_code}: {result.error_string}"
             )
 
+        # The I12 gate requires feedback, so a silent action server fails here
+        # rather than passing on the strength of the result alone.
+        if feedback_count == 0:
+            raise RuntimeError(f"{action_name} {label} published no feedback")
+        self.get_logger().info(f"{action_name} {label} feedback: {feedback_count} messages")
+
+        # Let the arm settle before judging it. Sim/mock converge on the first
+        # sample; a real series-elastic joint is still catching up ~10 ms after
+        # the action result, and the error is a max over all 7 joints — the six
+        # that only hold station still deviate while s1 swings.
+        # ponytail: fixed settle window, no re-commanding. The SDK's
+        # move_to_joint_positions re-commands in a 15 s loop; do that instead if
+        # a real arm turns out to need help converging rather than just time.
         sequence = self._joint_state_sequence
-        final_state = self.wait_for_fresh_joint_state(joint_names, after_sequence=sequence)
-        actual_positions = positions_for_joints(final_state, joint_names)
-        error = max(abs(actual - target) for actual, target in zip(actual_positions, target_positions))
+        settle_deadline = time.monotonic() + SETTLE_TIMEOUT_SEC
+        settle_start = time.monotonic()
+        while True:
+            final_state = self.wait_for_fresh_joint_state(joint_names, after_sequence=sequence)
+            sequence = self._joint_state_sequence
+            actual_positions = positions_for_joints(final_state, joint_names)
+            error = max(
+                abs(actual - target)
+                for actual, target in zip(actual_positions, target_positions)
+            )
+            if error <= FINAL_TOLERANCE_RAD or time.monotonic() >= settle_deadline:
+                break
+        settled_after = time.monotonic() - settle_start
         if error > FINAL_TOLERANCE_RAD:
-            raise RuntimeError(f"{action_name} {label} final error {error:.4f} rad exceeds 0.02 rad")
-        self.get_logger().info(f"{action_name} {label} verified: max_error={error:.4f} rad")
+            raise RuntimeError(
+                f"{action_name} {label} final error {error:.4f} rad exceeds "
+                f"{FINAL_TOLERANCE_RAD} rad after {settled_after:.2f} s of settling"
+            )
+        self.get_logger().info(
+            f"{action_name} {label} verified: max_error={error:.4f} rad "
+            f"(settled in {settled_after:.2f} s)"
+        )
         return True
 
     def run_arm(self, action_name: str, joint_names: List[str]) -> bool:
@@ -223,13 +279,9 @@ def main() -> None:
     node = SimTinyTrajectory()
     exit_code = 0
     try:
-        if not node.run_arm(
-            "/left_arm_controller/follow_joint_trajectory", LEFT_JOINTS
-        ):
+        if not node.run_arm(node.left_action, LEFT_JOINTS):
             return
-        if not node.run_arm(
-            "/right_arm_controller/follow_joint_trajectory", RIGHT_JOINTS
-        ):
+        if not node.run_arm(node.right_action, RIGHT_JOINTS):
             return
         node.get_logger().info("Reversible trajectories verified for both arms")
     except KeyboardInterrupt:

@@ -49,6 +49,15 @@ class MockRobot(Node):
         self._unsafe: bool = self.get_parameter("unsafe").value
 
         self._positions: dict = dict(NEUTRAL_POSITIONS)
+        # Set False to simulate a partial feed failure: joint_states stalls
+        # while /robot/state keeps flowing.
+        self.joint_states_enabled = True
+        # Set False to simulate an arm that stops following commands, so the
+        # shim's path tolerance has something to trip on.
+        self.command_feedthrough = True
+        # Reported for every joint. Non-zero simulates an arm still moving at
+        # the end of a trajectory; there is no physics behind it.
+        self.velocity = 0.0
 
         self._state_pub = self.create_publisher(AssemblyState, "/robot/state", 10)
         self._js_pub = self.create_publisher(JointState, "/robot/joint_states", 10)
@@ -87,13 +96,18 @@ class MockRobot(Node):
         self._state_pub.publish(msg)
 
     def _publish_joint_states(self) -> None:
+        if not self.joint_states_enabled:
+            return
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = list(self._positions.keys())
         msg.position = [self._positions[n] for n in msg.name]
+        msg.velocity = [self.velocity] * len(msg.name)
         self._js_pub.publish(msg)
 
     def _cmd_cb(self, cmd: JointCommand) -> None:
+        if not self.command_feedthrough:
+            return
         for name, pos in zip(cmd.names, cmd.command):
             if name in self._positions:
                 self._positions[name] = pos

@@ -15,25 +15,39 @@ Bridges these topics (I10 non-motion + I11 motion path):
     /robot/limb/{side}/joint_command_timeout (std_msgs/Float64)
 
 Usage:
-  python3 py_bridge.py --master http://192.168.1.224:11311 --ip 192.168.1.108
+  source scripts/baxter_env.sh && python3 py_bridge.py
+  python3 py_bridge.py --master http://<robot>:11311 --ip <this-host-on-robot-net>
 """
 
 import argparse
+import atexit
+import os
+import queue
 import socket
 import struct
-import struct as st
 import threading
 import time
 import xmlrpc.client
-from typing import Optional
+from typing import Callable, Optional
+from urllib.parse import urlparse
+from xmlrpc.server import SimpleXMLRPCRequestHandler, SimpleXMLRPCServer
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 from baxter_core_msgs.msg import AssemblyState, JointCommand
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64
+
+# Reject absurd TCPROS frames (corrupt length / DoS).
+MAX_TCPROS_FRAME_BYTES = 16 * 1024 * 1024
+# Drop slow ROS 1 peers rather than block the ROS 2 callback path.
+TCPROS_SEND_TIMEOUT_SEC = 0.5
+# Bound the inbound-subscriber handshake so a silent peer cannot leak a thread.
+TCPROS_HEADER_TIMEOUT_SEC = 10.0
+ROS2_PUBLISH_QUEUE_SIZE = 200
+ROS2_PUBLISH_TIMER_SEC = 0.01
 
 
 # ─── TCPROS protocol ─────────────────────────────────────────────
@@ -47,18 +61,27 @@ def _recv_exact(sock: socket.socket, n: int) -> bytes:
         buf += chunk
     return buf
 
+
+def _recv_frame(sock: socket.socket) -> bytes:
+    length = struct.unpack("<I", _recv_exact(sock, 4))[0]
+    if length > MAX_TCPROS_FRAME_BYTES:
+        raise ValueError(f"TCPROS frame too large: {length} bytes")
+    return _recv_exact(sock, length)
+
+
 def _parse_tcpros_header(data: bytes) -> dict:
     fields = {}
     i = 0
     while i < len(data):
-        flen = struct.unpack("<I", data[i:i+4])[0]
+        flen = struct.unpack("<I", data[i:i + 4])[0]
         i += 4
-        field = data[i:i+flen].decode("utf-8", errors="replace")
+        field = data[i:i + flen].decode("utf-8", errors="replace")
         i += flen
         if "=" in field:
             k, v = field.split("=", 1)
             fields[k] = v
     return fields
+
 
 def _build_tcpros_header(fields: dict) -> bytes:
     body = b""
@@ -73,8 +96,9 @@ def _build_tcpros_header(fields: dict) -> bytes:
 def _read_string(buf: bytes, off: int) -> tuple[str, int]:
     n = struct.unpack_from("<I", buf, off)[0]
     off += 4
-    s = buf[off:off+n].decode("utf-8", errors="replace")
+    s = buf[off:off + n].decode("utf-8", errors="replace")
     return s, off + n
+
 
 def _read_float64_array(buf: bytes, off: int) -> tuple[list, int]:
     n = struct.unpack_from("<I", buf, off)[0]
@@ -82,17 +106,21 @@ def _read_float64_array(buf: bytes, off: int) -> tuple[list, int]:
     vals = list(struct.unpack_from(f"<{n}d", buf, off))
     return vals, off + n * 8
 
+
 def _read_float64(buf: bytes, off: int) -> tuple[float, int]:
     v = struct.unpack_from("<d", buf, off)[0]
     return v, off + 8
+
 
 def _read_bool(buf: bytes, off: int) -> tuple[bool, int]:
     v = struct.unpack_from("<B", buf, off)[0]
     return v != 0, off + 1
 
+
 def _read_uint8(buf: bytes, off: int) -> tuple[int, int]:
     v = struct.unpack_from("<B", buf, off)[0]
     return v, off + 1
+
 
 def _read_string_array(buf: bytes, off: int) -> tuple[list, int]:
     n = struct.unpack_from("<I", buf, off)[0]
@@ -102,6 +130,7 @@ def _read_string_array(buf: bytes, off: int) -> tuple[list, int]:
         s, off = _read_string(buf, off)
         vals.append(s)
     return vals, off
+
 
 def _read_time(buf: bytes, off: int) -> tuple[int, int, int]:
     secs = struct.unpack_from("<I", buf, off)[0]
@@ -120,12 +149,17 @@ def deser_assembly_state(data: bytes) -> AssemblyState:
     msg.estop_source, off = _read_uint8(data, off)
     return msg
 
+
 def deser_joint_state(data: bytes) -> JointState:
     msg = JointState()
     off = 0
+    # ROS 1 std_msgs/Header is: uint32 seq, time stamp, string frame_id.
+    # ROS 2 dropped seq — read and discard it, or every later field misaligns.
+    off += 4
     secs, nsecs, off = _read_time(data, off)
     msg.header.stamp.sec = secs
     msg.header.stamp.nanosec = nsecs
+    msg.header.frame_id, off = _read_string(data, off)
     msg.name, off = _read_string_array(data, off)
     pos, off = _read_float64_array(data, off)
     vel, off = _read_float64_array(data, off)
@@ -142,8 +176,10 @@ def _ser_string(s: str) -> bytes:
     b = s.encode("utf-8")
     return struct.pack("<I", len(b)) + b
 
+
 def _ser_float64_array(vals: list) -> bytes:
     return struct.pack("<I", len(vals)) + struct.pack(f"<{len(vals)}d", *vals)
+
 
 def _ser_string_array(vals: list) -> bytes:
     out = struct.pack("<I", len(vals))
@@ -151,17 +187,124 @@ def _ser_string_array(vals: list) -> bytes:
         out += _ser_string(s)
     return out
 
+
 def _ser_int32(v: int) -> bytes:
     return struct.pack("<i", v)
+
 
 def _ser_float64(v: float) -> bytes:
     return struct.pack("<d", v)
 
+
 def ser_joint_command(msg: JointCommand) -> bytes:
-    return _ser_int32(msg.mode) + _ser_float64_array(list(msg.command)) + _ser_string_array(list(msg.names))
+    return (
+        _ser_int32(msg.mode)
+        + _ser_float64_array(list(msg.command))
+        + _ser_string_array(list(msg.names))
+    )
+
 
 def ser_float64_msg(msg: Float64) -> bytes:
     return _ser_float64(msg.data)
+
+
+def detect_local_ip(master_uri: str) -> str:
+    """Pick the local interface that routes toward the ROS 1 master host."""
+    parsed = urlparse(master_uri)
+    host = parsed.hostname
+    port = parsed.port or 11311
+    if not host:
+        raise SystemExit(f"Cannot parse host from --master URI: {master_uri}")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect((host, port))
+        return sock.getsockname()[0]
+    except OSError as exc:
+        raise SystemExit(
+            f"Could not auto-detect local IP toward {host}:{port} ({exc}). "
+            "Pass --ip explicitly."
+        ) from exc
+    finally:
+        sock.close()
+
+
+# ─── ROS 1 Slave API (XML-RPC) ────────────────────────────────────
+# Real ROS 1 nodes negotiate TCPROS via each other's Slave API: a publisher's
+# registerSubscriber reply gives XML-RPC URIs, not TCPROS addresses — you
+# then call requestTopic on that URI to get the actual host/port to connect
+# to. This class is that Slave API for our one bridge "node".
+# ponytail: only requestTopic/publisherUpdate/getPid/getMasterUri are
+# implemented — enough for TCPROS negotiation, not a full slave API.
+
+class _QuietHandler(SimpleXMLRPCRequestHandler):
+    def log_message(self, *args):
+        pass
+
+
+class SlaveApi:
+    def __init__(self, ip: str, master_uri: str):
+        self.ip = ip
+        self.master_uri = master_uri
+        self.pub_ports: dict[str, tuple[str, int]] = {}
+        self._publisher_update_handlers: dict[str, list[Callable]] = {}
+        self._server = SimpleXMLRPCServer(
+            (ip, 0),
+            requestHandler=_QuietHandler,
+            logRequests=False,
+            allow_none=True,
+        )
+        self.port = self._server.server_address[1]
+        self._server.register_function(self.requestTopic, "requestTopic")
+        self._server.register_function(self.publisherUpdate, "publisherUpdate")
+        self._server.register_function(self.getPid, "getPid")
+        self._server.register_function(self.getMasterUri, "getMasterUri")
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        # Registrations outlive the process on the ROS 1 master otherwise: it
+        # keeps trying to reach our dead XML-RPC endpoint, and short-lived
+        # scripts accumulate as phantom nodes in `rosnode list`.
+        self._registered: list = []
+        atexit.register(self.unregister_all)
+
+    def track(self, endpoint) -> None:
+        self._registered.append(endpoint)
+
+    def unregister_all(self) -> None:
+        for endpoint in self._registered:
+            try:
+                endpoint.stop()
+            except Exception:
+                pass
+        self._registered = []
+
+    @property
+    def uri(self) -> str:
+        return f"http://{self.ip}:{self.port}/"
+
+    def register_publisher_port(self, topic: str, port: int) -> None:
+        self.pub_ports[topic] = (self.ip, port)
+
+    def register_publisher_update_handler(self, topic: str, handler: Callable) -> None:
+        self._publisher_update_handlers.setdefault(topic, []).append(handler)
+
+    def requestTopic(self, caller_id, topic, protocols):
+        if topic not in self.pub_ports:
+            return (0, f"not publishing {topic}", [])
+        host, port = self.pub_ports[topic]
+        return (1, "", ["TCPROS", host, port])
+
+    def publisherUpdate(self, caller_id, topic, publishers):
+        for handler in self._publisher_update_handlers.get(topic, []):
+            try:
+                handler(list(publishers))
+            except Exception:
+                pass
+        return (1, "", 0)
+
+    def getPid(self, caller_id):
+        return (1, "", os.getpid())
+
+    def getMasterUri(self, caller_id):
+        return (1, "", self.master_uri)
 
 
 # ─── ROS 1 subscriber (TCPROS client) ────────────────────────────
@@ -169,40 +312,76 @@ def ser_float64_msg(msg: Float64) -> bytes:
 class ROS1Subscriber:
     """Connects to a ROS 1 publisher via TCPROS and calls callback on each message."""
 
-    def __init__(self, master_uri: str, topic: str, msg_type: str,
-                 caller_id: str, ip: str, port: int, callback, deserializer):
+    def __init__(
+        self,
+        master_uri: str,
+        topic: str,
+        msg_type: str,
+        caller_id: str,
+        slave: "SlaveApi",
+        callback,
+        deserializer,
+        log_fn: Optional[Callable[[str], None]] = None,
+    ):
         self.master_uri = master_uri
         self.topic = topic
         self.msg_type = msg_type
         self.caller_id = caller_id
-        self.ip = ip
-        self.port = port
+        self.slave = slave
         self.callback = callback
         self.deserializer = deserializer
+        self._log = log_fn or (lambda _msg: None)
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._sock: Optional[socket.socket] = None
+        self._sock_lock = threading.Lock()
+        self._last_deser_warn = 0.0
+        slave.register_publisher_update_handler(topic, self._on_publisher_update)
 
     def start(self):
         self._running = True
+        self.slave.track(self)
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._running = False
+        self._close_sock()
+        # The in-loop unregister only runs on a clean receive-loop exit; on an
+        # abrupt process exit the master would keep a stale subscriber entry.
+        try:
+            master = xmlrpc.client.ServerProxy(self.master_uri)
+            master.unregisterSubscriber(self.caller_id, self.topic, self.slave.uri)
+        except Exception:
+            pass
+
+    def _close_sock(self) -> None:
+        with self._sock_lock:
+            sock = self._sock
+            self._sock = None
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    def _on_publisher_update(self, _publishers) -> None:
+        # Force the receive loop to drop and re-negotiate TCPROS.
+        self._close_sock()
 
     def _run(self):
         while self._running:
             try:
                 self._connect_and_receive()
-            except Exception as e:
+            except Exception as exc:
                 if self._running:
-                    time.sleep(2)  # reconnect after pause
+                    self._log(f"ROS1 sub {self.topic} reconnecting after: {exc}")
+                    time.sleep(2)
 
     def _connect_and_receive(self):
         master = xmlrpc.client.ServerProxy(self.master_uri)
         code, msg, pub_uris = master.registerSubscriber(
-            self.caller_id, self.topic, self.msg_type,
-            f"http://{self.ip}:{self.port}"
+            self.caller_id, self.topic, self.msg_type, self.slave.uri
         )
         if code != 1:
             raise RuntimeError(f"registerSubscriber failed: {msg}")
@@ -211,46 +390,61 @@ class ROS1Subscriber:
             time.sleep(2)
             return
 
-        pub_uri = pub_uris[0]
-        # Parse "http://host:port/"
-        pub_host = pub_uri.split("//")[1].split("/")[0].split(":")[0]
-        pub_port = int(pub_uri.split("//")[1].split("/")[0].split(":")[1])
+        # pub_uris are the publishers' Slave API (XML-RPC) URIs, not TCPROS
+        # addresses — ask each publisher where its TCPROS socket actually is.
+        pub = xmlrpc.client.ServerProxy(pub_uris[0])
+        code2, msg2, proto = pub.requestTopic(
+            self.caller_id, self.topic, [["TCPROS"]]
+        )
+        if code2 != 1 or not proto:
+            raise RuntimeError(f"requestTopic failed: {msg2}")
+        _, pub_host, pub_port = proto
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(10)
-        sock.connect((pub_host, pub_port))
+        try:
+            sock.connect((pub_host, pub_port))
+            header = _build_tcpros_header({
+                "md5sum": "*",
+                "type": self.msg_type,
+                "topic": self.topic,
+                "callerid": self.caller_id,
+            })
+            sock.sendall(header)
+            _parse_tcpros_header(_recv_frame(sock))
 
-        # Send TCPROS header
-        header = _build_tcpros_header({
-            "md5sum": "*",
-            "type": self.msg_type,
-            "topic": self.topic,
-            "callerid": self.caller_id,
-        })
-        sock.sendall(header)
+            with self._sock_lock:
+                self._sock = sock
 
-        # Receive header back
-        hlen = struct.unpack("<I", _recv_exact(sock, 4))[0]
-        hdr_data = _recv_exact(sock, hlen)
-        _parse_tcpros_header(hdr_data)
-
-        # Receive messages
-        while self._running:
-            dlen = struct.unpack("<I", _recv_exact(sock, 4))[0]
-            data = _recv_exact(sock, dlen)
+            while self._running:
+                with self._sock_lock:
+                    if self._sock is not sock:
+                        break
+                data = _recv_frame(sock)
+                try:
+                    msg_obj = self.deserializer(data)
+                    self.callback(msg_obj)
+                except Exception as exc:
+                    now = time.monotonic()
+                    if now - self._last_deser_warn > 5.0:
+                        self._last_deser_warn = now
+                        self._log(
+                            f"ROS1 sub {self.topic} deserialize failed: {exc}"
+                        )
+        finally:
+            with self._sock_lock:
+                if self._sock is sock:
+                    self._sock = None
             try:
-                msg = self.deserializer(data)
-                self.callback(msg)
+                sock.close()
             except Exception:
                 pass
-
-        sock.close()
-
-        # Unregister
-        try:
-            master.unregisterSubscriber(self.caller_id, self.topic)
-        except Exception:
-            pass
+            try:
+                master.unregisterSubscriber(
+                    self.caller_id, self.topic, self.slave.uri
+                )
+            except Exception:
+                pass
 
 
 # ─── ROS 1 publisher (TCPROS server) ─────────────────────────────
@@ -258,13 +452,21 @@ class ROS1Subscriber:
 class ROS1Publisher:
     """Registers as a publisher on the ROS 1 master and serves TCPROS to subscribers."""
 
-    def __init__(self, master_uri: str, topic: str, msg_type: str,
-                 caller_id: str, ip: str, port: int, serializer):
+    def __init__(
+        self,
+        master_uri: str,
+        topic: str,
+        msg_type: str,
+        caller_id: str,
+        slave: "SlaveApi",
+        port: int,
+        serializer,
+    ):
         self.master_uri = master_uri
         self.topic = topic
         self.msg_type = msg_type
         self.caller_id = caller_id
-        self.ip = ip
+        self.slave = slave
         self.port = port
         self.serializer = serializer
         self._subscribers: list[socket.socket] = []
@@ -273,14 +475,32 @@ class ROS1Publisher:
 
     def start(self):
         self._running = True
+        self.slave.track(self)
+        self.slave.register_publisher_port(self.topic, self.port)
         master = xmlrpc.client.ServerProxy(self.master_uri)
         code, msg, _ = master.registerPublisher(
-            self.caller_id, self.topic, self.msg_type,
-            f"http://{self.ip}:{self.port}"
+            self.caller_id, self.topic, self.msg_type, self.slave.uri
         )
         if code != 1:
             raise RuntimeError(f"registerPublisher failed: {msg}")
         threading.Thread(target=self._listen, daemon=True).start()
+
+    def stop(self):
+        """Unregister from the ROS 1 master so Baxter is not left with a stale
+        publisher entry that only a roscore restart clears."""
+        self._running = False
+        try:
+            master = xmlrpc.client.ServerProxy(self.master_uri)
+            master.unregisterPublisher(self.caller_id, self.topic, self.slave.uri)
+        except Exception:
+            pass
+        with self._lock:
+            subscribers, self._subscribers = self._subscribers, []
+        for sock in subscribers:
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     def _listen(self):
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -291,39 +511,58 @@ class ROS1Publisher:
         while self._running:
             try:
                 conn, _ = srv.accept()
-                threading.Thread(target=self._handle_sub, args=(conn,), daemon=True).start()
+                threading.Thread(
+                    target=self._handle_sub, args=(conn,), daemon=True
+                ).start()
             except socket.timeout:
                 continue
         srv.close()
 
     def _handle_sub(self, conn: socket.socket):
         try:
-            hlen = struct.unpack("<I", _recv_exact(conn, 4))[0]
-            hdr = _parse_tcpros_header(_recv_exact(conn, hlen))
+            # Bound the header wait too, or a peer that connects and never
+            # sends leaks this thread forever.
+            conn.settimeout(TCPROS_HEADER_TIMEOUT_SEC)
+            hdr = _parse_tcpros_header(_recv_frame(conn))
+            del hdr  # negotiated; md5sum is wildcard
             resp = _build_tcpros_header({
                 "md5sum": "*",
                 "type": self.msg_type,
                 "topic": self.topic,
                 "callerid": self.caller_id,
             })
+            conn.settimeout(TCPROS_SEND_TIMEOUT_SEC)
             conn.sendall(resp)
             with self._lock:
                 self._subscribers.append(conn)
         except Exception:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def publish(self, msg):
         data = self.serializer(msg)
+        if len(data) > MAX_TCPROS_FRAME_BYTES:
+            raise ValueError(f"serialized message too large: {len(data)}")
         framed = struct.pack("<I", len(data)) + data
         with self._lock:
-            dead = []
-            for i, sock in enumerate(self._subscribers):
+            subscribers = list(self._subscribers)
+        dead: list[socket.socket] = []
+        for sock in subscribers:
+            try:
+                sock.settimeout(TCPROS_SEND_TIMEOUT_SEC)
+                sock.sendall(framed)
+            except Exception:
+                dead.append(sock)
+        if dead:
+            with self._lock:
+                self._subscribers = [s for s in self._subscribers if s not in dead]
+            for sock in dead:
                 try:
-                    sock.sendall(framed)
+                    sock.close()
                 except Exception:
-                    dead.append(i)
-            for i in reversed(dead):
-                self._subscribers.pop(i)
+                    pass
 
 
 # ─── Bridge node ─────────────────────────────────────────────────
@@ -334,31 +573,57 @@ class BaxterPyBridge(Node):
         self.master_uri = master_uri
         self.local_ip = local_ip
         self.base_port = 30000
+        self._ros2_queue: queue.Queue = queue.Queue(maxsize=ROS2_PUBLISH_QUEUE_SIZE)
 
-        qos10 = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
-                           history=HistoryPolicy.KEEP_LAST, depth=10)
-        qos1 = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
-                          history=HistoryPolicy.KEEP_LAST, depth=1)
+        qos10 = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
+        qos1 = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
 
         # ROS 2 publishers (ROS 1 -> ROS 2)
         self.state_pub = self.create_publisher(AssemblyState, "/robot/state", qos10)
         self.js_pub = self.create_publisher(JointState, "/robot/joint_states", qos10)
 
+        # Shared ROS 1 Slave API (XML-RPC) — used as caller_api for every
+        # registerPublisher/registerSubscriber call below.
+        self.slave = SlaveApi(local_ip, master_uri)
+
         # ROS 1 publishers (ROS 2 -> ROS 1)
         self.ros1_pubs: dict[str, ROS1Publisher] = {}
         for side in ("left", "right"):
-            jc_pub = ROS1Publisher(master_uri, f"/robot/limb/{side}/joint_command",
-                                   "baxter_core_msgs/JointCommand",
-                                   f"/py_bridge_{side}_jc", local_ip,
-                                   self._next_port(), ser_joint_command)
-            sr_pub = ROS1Publisher(master_uri, f"/robot/limb/{side}/set_speed_ratio",
-                                   "std_msgs/Float64",
-                                   f"/py_bridge_{side}_sr", local_ip,
-                                   self._next_port(), ser_float64_msg)
-            to_pub = ROS1Publisher(master_uri, f"/robot/limb/{side}/joint_command_timeout",
-                                   "std_msgs/Float64",
-                                   f"/py_bridge_{side}_to", local_ip,
-                                   self._next_port(), ser_float64_msg)
+            jc_pub = ROS1Publisher(
+                master_uri,
+                f"/robot/limb/{side}/joint_command",
+                "baxter_core_msgs/JointCommand",
+                f"/py_bridge_{side}_jc",
+                self.slave,
+                self._next_port(),
+                ser_joint_command,
+            )
+            sr_pub = ROS1Publisher(
+                master_uri,
+                f"/robot/limb/{side}/set_speed_ratio",
+                "std_msgs/Float64",
+                f"/py_bridge_{side}_sr",
+                self.slave,
+                self._next_port(),
+                ser_float64_msg,
+            )
+            to_pub = ROS1Publisher(
+                master_uri,
+                f"/robot/limb/{side}/joint_command_timeout",
+                "std_msgs/Float64",
+                f"/py_bridge_{side}_to",
+                self.slave,
+                self._next_port(),
+                ser_float64_msg,
+            )
             self.ros1_pubs[f"/robot/limb/{side}/joint_command"] = jc_pub
             self.ros1_pubs[f"/robot/limb/{side}/set_speed_ratio"] = sr_pub
             self.ros1_pubs[f"/robot/limb/{side}/joint_command_timeout"] = to_pub
@@ -366,39 +631,93 @@ class BaxterPyBridge(Node):
         # ROS 2 subscribers (ROS 2 -> ROS 1)
         for side in ("left", "right"):
             self.create_subscription(
-                JointCommand, f"/robot/limb/{side}/joint_command",
-                lambda msg, t=f"/robot/limb/{side}/joint_command": self._ros2_to_ros1(t, msg),
-                qos1)
+                JointCommand,
+                f"/robot/limb/{side}/joint_command",
+                lambda msg, t=f"/robot/limb/{side}/joint_command": self._ros2_to_ros1(
+                    t, msg
+                ),
+                qos1,
+            )
             self.create_subscription(
-                Float64, f"/robot/limb/{side}/set_speed_ratio",
-                lambda msg, t=f"/robot/limb/{side}/set_speed_ratio": self._ros2_to_ros1(t, msg),
-                qos1)
+                Float64,
+                f"/robot/limb/{side}/set_speed_ratio",
+                lambda msg, t=f"/robot/limb/{side}/set_speed_ratio": self._ros2_to_ros1(
+                    t, msg
+                ),
+                qos1,
+            )
             self.create_subscription(
-                Float64, f"/robot/limb/{side}/joint_command_timeout",
-                lambda msg, t=f"/robot/limb/{side}/joint_command_timeout": self._ros2_to_ros1(t, msg),
-                qos1)
+                Float64,
+                f"/robot/limb/{side}/joint_command_timeout",
+                lambda msg, t=f"/robot/limb/{side}/joint_command_timeout": (
+                    self._ros2_to_ros1(t, msg)
+                ),
+                qos1,
+            )
 
-        # ROS 1 subscribers (ROS 1 -> ROS 2)
+        # ROS 1 subscribers (ROS 1 -> ROS 2) — enqueue for main-thread publish
+        log_fn = lambda m: self.get_logger().warn(m, throttle_duration_sec=5.0)
         self.ros1_subs: list[ROS1Subscriber] = []
-        self.ros1_subs.append(ROS1Subscriber(
-            master_uri, "/robot/state", "baxter_core_msgs/AssemblyState",
-            "/py_bridge_state", local_ip, self._next_port(),
-            self._on_state, deser_assembly_state))
-        self.ros1_subs.append(ROS1Subscriber(
-            master_uri, "/robot/joint_states", "sensor_msgs/JointState",
-            "/py_bridge_js", local_ip, self._next_port(),
-            self._on_joint_states, deser_joint_state))
+        self.ros1_subs.append(
+            ROS1Subscriber(
+                master_uri,
+                "/robot/state",
+                "baxter_core_msgs/AssemblyState",
+                "/py_bridge_state",
+                self.slave,
+                lambda msg: self._enqueue_ros2(self.state_pub, msg),
+                deser_assembly_state,
+                log_fn=log_fn,
+            )
+        )
+        self.ros1_subs.append(
+            ROS1Subscriber(
+                master_uri,
+                "/robot/joint_states",
+                "sensor_msgs/JointState",
+                "/py_bridge_js",
+                self.slave,
+                self._enqueue_joint_states,
+                deser_joint_state,
+                log_fn=log_fn,
+            )
+        )
+
+        self.create_timer(ROS2_PUBLISH_TIMER_SEC, self._flush_ros2_queue)
 
     def _next_port(self) -> int:
         self.base_port += 1
         return self.base_port
 
-    def _on_state(self, msg: AssemblyState):
-        self.state_pub.publish(msg)
+    def _enqueue_ros2(self, publisher, msg) -> None:
+        try:
+            self._ros2_queue.put_nowait((publisher, msg))
+        except queue.Full:
+            try:
+                self._ros2_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._ros2_queue.put_nowait((publisher, msg))
+            except queue.Full:
+                self.get_logger().warn(
+                    "ROS 2 publish queue full; dropping bridged message",
+                    throttle_duration_sec=5.0,
+                )
 
-    def _on_joint_states(self, msg: JointState):
-        msg.header.stamp = self.get_clock().now().to_msg()
-        self.js_pub.publish(msg)
+    def _enqueue_joint_states(self, msg: JointState) -> None:
+        # Stamp on the ROS 2 executor thread in _flush_ros2_queue.
+        self._enqueue_ros2(self.js_pub, msg)
+
+    def _flush_ros2_queue(self) -> None:
+        while True:
+            try:
+                publisher, msg = self._ros2_queue.get_nowait()
+            except queue.Empty:
+                break
+            if publisher is self.js_pub and isinstance(msg, JointState):
+                msg.header.stamp = self.get_clock().now().to_msg()
+            publisher.publish(msg)
 
     def _ros2_to_ros1(self, topic: str, msg):
         pub = self.ros1_pubs.get(topic)
@@ -410,27 +729,37 @@ class BaxterPyBridge(Node):
             sub.start()
         for pub in self.ros1_pubs.values():
             pub.start()
-        self.get_logger().info(f"Bridge started: master={self.master_uri} ip={self.local_ip}")
+        self.get_logger().info(
+            f"Bridge started: master={self.master_uri} ip={self.local_ip}"
+        )
+
+    def destroy_node(self):
+        for sub in getattr(self, "ros1_subs", []):
+            sub.stop()
+        for pub in getattr(self, "ros1_pubs", {}).values():
+            pub.stop()
+        super().destroy_node()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Pure Python Baxter ROS 1->2 bridge")
-    parser.add_argument("--master", default="http://192.168.1.224:11311",
-                        help="ROS 1 master URI")
-    parser.add_argument("--ip", default=None,
-                        help="Local IP reachable by Baxter (auto-detect if omitted)")
+    parser.add_argument(
+        "--master",
+        default=os.environ.get("ROS_MASTER_URI"),
+        help="ROS 1 master URI (default: $ROS_MASTER_URI, set by scripts/baxter_env.sh)",
+    )
+    parser.add_argument(
+        "--ip",
+        default=os.environ.get("ROS_IP"),
+        help="Local IP the robot can reach us on (default: $ROS_IP, else auto-detect)",
+    )
     args = parser.parse_args()
 
-    local_ip = args.ip
-    if not local_ip:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("192.168.1.224", 11311))
-            local_ip = s.getsockname()[0]
-        except Exception:
-            local_ip = "192.168.1.108"
-        finally:
-            s.close()
+    if not args.master:
+        parser.error("no --master and $ROS_MASTER_URI unset; "
+                     "run 'source scripts/baxter_env.sh' first")
+
+    local_ip = args.ip if args.ip else detect_local_ip(args.master)
 
     rclpy.init()
     node = BaxterPyBridge(args.master, local_ip)

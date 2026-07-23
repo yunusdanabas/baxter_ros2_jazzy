@@ -29,7 +29,7 @@ colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
 source install/setup.bash
 ```
 
-Run the smallest smoke check that covers your change. Use an isolated `ROS_DOMAIN_ID` and `GZ_PARTITION`; for runtime changes, require numeric final-state evidence and clean teardown as described in `docs/ci_release_checklist.md`.
+Run the smallest smoke check that covers your change. Run one simulation at a time (do not rely on `ROS_DOMAIN_ID` / `GZ_PARTITION` isolation in the documented workflow). For runtime changes, require numeric final-state evidence and clean teardown as described in `docs/ci_release_checklist.md`.
 
 ## Pin And Source Rules
 
@@ -47,9 +47,9 @@ Do not copy or import code/config from unlicensed repositories.
 
 ## Hardware Safety Review
 
-Hardware bridge, safety, or motion changes are blocked until the named hardware gates reopen. Do not add hardware bridge tooling, action shims, grippers, compatibility layers, or Zenoh fallback under the sim-first release scope.
+Hardware I10–I12 gates remain blocked. The prep package `baxter_hardware_bridge` and `docs/hardware_runbook.md` already exist for lab prep; do not expand them into a support claim, and do not add grippers, compatibility layers, or Zenoh fallback under the sim-first release scope.
 
-Beginner and release docs must not teach raw safety-topic publishing or hardware enable commands.
+Beginner and release docs must not teach raw safety-topic publishing. The hardware runbook may document Baxter-side enable/tuck commands for supervised lab use only.
 
 ## License
 

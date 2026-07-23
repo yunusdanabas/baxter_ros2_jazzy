@@ -62,7 +62,7 @@ colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
 source install/setup.bash
 ```
 
-Choose an unused domain and partition rather than copying `42` when other ROS or Gazebo sessions may be running. If a previous build used another workspace underlay, remove this workspace's generated `build/`, `install/`, and `log/` directories and rebuild from a shell that sources only `/opt/ros/jazzy`.
+Run one simulation at a time. If a previous build used another workspace underlay, remove this workspace's generated `build/`, `install/`, and `log/` directories and rebuild from a shell that sources only `/opt/ros/jazzy`.
 
 If `src/baxter_common_ros2` already exists, verify the required pin instead of importing over it:
 

@@ -14,12 +14,12 @@ export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 # Robot connection — overridable at runtime
 export ROS_MASTER_URI="${ROS_MASTER_URI:-http://192.168.1.224:11311}"
 export ROS_IP="${ROS_IP:-$(hostname -I | awk '{print $1}')}"
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
+# No ROS_DOMAIN_ID: the container must share the host's default domain or the
+# action shim on the laptop never sees the bridged topics.
 
 echo "=== Baxter Bridge Container ==="
 echo "ROS_MASTER_URI: ${ROS_MASTER_URI}"
 echo "ROS_IP: ${ROS_IP}"
-echo "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID}"
 echo "RMW: ${RMW_IMPLEMENTATION}"
 echo
 
