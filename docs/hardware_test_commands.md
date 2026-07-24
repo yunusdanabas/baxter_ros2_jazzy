@@ -460,6 +460,17 @@ do **not** publish to `/robot/set_super_enable` at all.
 
 ## Where the last session stopped
 
-Robot left `enabled=false` and tucked, positions unchanged, no motion
-performed. Head sonar OFF. Bridge and shims stopped. Resume at step 0, then
-step 6.
+**2026-07-24 — I12 supervised motion PASSED.** The enable blocker is gone:
+`tuck_arms.py -u` cleared it on the first attempt, both arms then ran verified
+trajectories through the ROS 2 command path, and a 7-joint 1.56 rad move tracked
+to 0.0023 rad.
+
+Robot left `enabled=false`, **tucked** (`s1 ≈ -2.18`), no faults, e-stop clear.
+Head sonar OFF. Bridge and shims stopped, no stale registrations on the master.
+Captures in `data/sessions/2026-07-24/`.
+
+Resume at step 0. Step 6 now works as documented — expect `tuck_arms.py -u` to
+succeed rather than to be a blocker. Before the next session, work the
+improvement backlog at the top of `logs/I18_hardware_day.log.md`; items 1 and 2
+(second-publisher rejection, and the bridge subscribing to all publishers) are
+the ones that affect safety and data fidelity.
