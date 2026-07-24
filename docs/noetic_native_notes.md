@@ -67,8 +67,16 @@ Untuck targets:
   command arrives within this window the robot falls back to gravity
   compensation and the arm sags. Commands must be **continuously republished**,
   not sent once. The ROS 2 shim publishes at 100 Hz with a 0.2 s timeout.
-- **`robot/limb/<side>/set_speed_ratio`** (`std_msgs/Float64`): per-limb. All
-  hardware work so far has run at 0.1.
+- **`robot/limb/<side>/set_speed_ratio`** (`std_msgs/Float64`): per-limb.
+  **Measured 2026-07-24: raising it 0.1 → 0.2 → 0.3 changed tracking error not at
+  all.** It caps the robot-side maximum joint speed, and a trajectory of 0.35 rad
+  over 3 s (~0.117 rad/s) sits far below that cap at any of those settings. To move
+  faster, shorten the trajectory duration — the speed ratio is a ceiling, not a
+  throttle.
+- **Gravity compensation holds position.** With no `joint_command` for ~20 s, well
+  past the 0.2 s timeout, the arms drifted 0.001 rad. Losing the command stream is
+  not immediately dangerous at a moderate pose, though still not a substitute for
+  holding deliberately.
 - **`/robot/ref_joint_states`** (`sensor_msgs/JointState`) is the robot's own
   commanded reference, published alongside the measured `/robot/joint_states`.
   For tracking error this is better ground truth than anything reconstructed
