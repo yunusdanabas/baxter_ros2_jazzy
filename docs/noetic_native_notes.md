@@ -137,10 +137,34 @@ _(to fill on a session: which of these actually publish at rate vs. sit latched)
 
 Highlights from `params_*.yaml` — the robot's own rosparam tree.
 
-## _(to fill)_ Observed rates and latencies
+## Observed rates and behaviour (measured 2026-07-24)
 
-`rostopic hz` for joint_states, robot/state, joint_command. Command-to-motion
-lag as seen on the arm.
+- `/robot/state` **101 Hz**, `/robot/joint_states` **100 Hz**.
+- `/robot/joint_states` has **two publishers**, `/realtime_loop` and
+  `/end_effector_publisher`, and consecutive messages **alternate** between a
+  17-joint set (`head_nod`, `head_pan`, + arms) and a 15-joint set (arms +
+  gripper). Both carry all 14 arm joints, so name lookups resolve either way —
+  but anything differencing consecutive samples for velocity is differencing
+  across two independent sources. A native stack should filter to one publisher
+  or key on the joints it needs.
+- Tracking on a real arm is **much better than the Rethink defaults assume**:
+  worst error 0.0043–0.0077 rad across four `s1` moves of 0.35 rad over 3 s at
+  `speed_ratio` 0.1, i.e. a 26× margin under a 0.2 rad path tolerance.
+- After a cancel mid-trajectory the arm settles into the hold setpoint over
+  roughly 0.02 rad, then holds to within 0.0015 rad peak-to-peak. Budget a
+  settle window before judging a hold; do not compare two adjacent samples.
+
+## Enable and untuck, confirmed on hardware (2026-07-24)
+
+`tuck_arms.py -u` succeeded on the first attempt in ~23 s, from tucked
+(`left_s1 = -2.174`) to untucked (`left_s1 = -1.042`). This confirms the
+diagnosis that the difference from `enable_robot.py -e` is collision suppression
+plus a 20 Hz enable republish, not robot health.
+
+The documented warning that a successful untuck can end `enabled: False` did
+**not** occur — the robot ended `ready=True enabled=True` on both the bridged and
+the direct path. Treat that as a possible outcome, not the normal one, and always
+verify by arm position rather than by the flag.
 
 ## _(to fill)_ Diagnostics catalog
 

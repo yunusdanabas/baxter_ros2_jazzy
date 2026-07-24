@@ -367,10 +367,13 @@ Goal tolerance violated: left_s1 still moving at 0.xxx rad/s (limit 0.250 rad/s)
 ```
 
 `path_tolerance_rad` (0.2) and `stopped_velocity_tolerance` (0.25) are Rethink's
-own defaults but are desk-tuned here against a mock with no physics. If either
-fires on a move the arm visibly completed, the tolerance is too tight rather than
-the arm broken — re-run with `-p path_tolerance_rad:=0.3` on the shims and record
-the value that worked.
+own defaults, desk-tuned here against a mock with no physics.
+
+> **Measured 2026-07-24: the concern was backwards.** Neither fired. Worst
+> tracking error across four real trajectories was **0.0077 rad**, a 26× margin
+> under the 0.2 rad path tolerance. These limits are too *loose* to catch a real
+> fault, not too tight. Do not reach for `-p path_tolerance_rad:=0.3`; tighten
+> them against the speed sweep instead. See `logs/I18_hardware_day.log.md` F3.
 
 Guard rail already proven: with the arms tucked (`s1=-2.175`, outside the
 `[-2.147, 1.047]` limit table) the script refuses to move and exits 1 —
@@ -445,7 +448,7 @@ do **not** publish to `/robot/set_super_enable` at all.
 | I11 action shims / safety interlock | **PASS** (2026-07-22, zero motion) |
 | I12 command-path hardening | **DONE** (2026-07-23, no hardware) — F1–F4 and F10 from `logs/I12_prep_command_path_audit.log.md` are fixed and covered by `dry_run_test` (16/16). Rehearsed against `mock_robot`: both arms verified with feedback, cancel-hold verified. |
 | I17 pre-hardware hardening | **DONE** (2026-07-23, no hardware) — path tolerance and stopped-velocity monitoring added, `dry_run_test` now 20/20, closed-loop rehearsal re-run. See `logs/I17_pre_hardware_hardening.log.md`. |
-| I12 supervised motion | **BLOCKED** — robot will not enable from the tucked pose (see step 6). Diagnosed 2026-07-22: not connectivity, not health, not calibration; only the latched `left_s1` collision remains. Next action is `tuck_arms.py -u` under supervision. |
+| I12 supervised motion | **PASS** (2026-07-24) — `tuck_arms.py -u` cleared the enable blocker on the first attempt, then `sim_tiny_trajectory` verified both arms out and back with feedback. Worst tracking error 0.0077 rad; **no tolerance aborts**. See `logs/I18_hardware_day.log.md`. |
 
 ## Robot identity
 
