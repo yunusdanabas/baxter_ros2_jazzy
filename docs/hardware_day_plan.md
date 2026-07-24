@@ -1,243 +1,203 @@
-# Baxter Robot Day — Full-Day Plan
+# Baxter Session Plan — run the tests, read the results, harvest improvements
 
-Schedule and decision points for a full day with the real robot. Commands are
-**not** duplicated here — `docs/hardware_test_commands.md` is the copy-paste
-sheet and this document tells you which section to run, when, and what to do
-when it goes wrong. Background and safety rules: `docs/hardware_runbook.md`.
+Ordered phases for a supervised session with the real robot. Commands are **not**
+duplicated here — `docs/hardware_test_commands.md` is the copy-paste sheet and this
+document says which section to run, in what order, and what to do when it goes wrong.
+Background and safety: `docs/hardware_runbook.md`.
 
-**Where we resume:** last session (2026-07-22) left the robot disabled, tucked,
-sonar off, no motion performed. The I12 supervised-motion gate is **blocked** on
-`enable_robot.py -e` failing from the tucked pose. Stage S2 is the crux of the
-day — everything after it depends on the robot enabling.
+**Goal:** validate the command path on hardware, get real motion, and come away with a
+list of concrete code improvements. Not a data archive — recordings are short and
+topic-scoped, taken only where a number is needed that cannot be read off the console.
+
+**Where we resume:** the 2026-07-22 session ended blocked — `enable_robot.py -e` fails
+from the tucked pose because a latched `left_s1` collision force-field cannot
+self-clear while the robot is disabled. P3 is the crux; everything after it depends
+on it.
+
+## Verified before this session (2026-07-24)
+
+| Check | Result |
+|---|---|
+| Robot reachable | `011412P0024.local` → `192.168.1.232`, via `enp4s0`, 0.36 ms RTT |
+| Robot baseline | `ready/enabled/stopped/error` all `False`, `estop_button: 0` — disabled, fault-free |
+| `dry_run_test` | 20/20 PASS |
+| Shims under launch | all nodes up, no rclpy errors |
+| Recorders | both paths proven (full, and `TOPICS_RE`-scoped) |
+| `baxter-noetic:n07` | rebuilt on the **host** daemon; `enable_robot.py -s` works through it |
 
 ## Standing rules
 
-- E-stop in hand for every stage from S2 onward. Workspace clear.
-- Recorders (`scripts/record_ros1.sh`, `scripts/record_ros2.sh`) run all day in
-  their own terminals. Stop them at lunch and at shutdown with Ctrl-C so the
-  bags close cleanly rather than being killed mid-write.
-- Grippers are **observe-only** this session. Nothing commands them; their state
-  is captured by the ROS 1 bag.
-- **Disk space first.** Both recorders refuse to start below 10 GB free
-  (`MIN_FREE_GB`). Check `df -h /` the day before — a full day of dual bags does
-  not fit in a few GB, and running out mid-session loses the session.
-- If a recorder is ever killed hard (SIGKILL, crash, power) instead of Ctrl-C,
-  the ROS 2 bag is left without its `metadata.yaml` and `ros2 bag info` fails.
-  The data is **not** lost: `ros2 bag reindex <bag_dir>` rebuilds it. Verified.
-- Anything unexpected during motion → hit the physical e-stop. Full abort table
-  in `hardware_test_commands.md` § "Abort procedures".
+- **Source `scripts/baxter_env.sh` in every terminal.** It strips an active conda
+  install from `PATH`; without it `py_bridge.py` dies on `rclpy._rclpy_pybind11`.
+  Source it before `colcon build` too — see the runbook prerequisites.
+- **Head sonar off for the whole session** (P1), re-checked after any robot reboot.
+  With it off there is no proximity sensing, so the e-stop and human supervision are
+  the only backstops.
+- **E-stop in hand from P3 onward.** Workspace clear, nobody within arm reach.
+  Anything unexpected during motion → hit the physical e-stop.
+- Never publish to `/robot/set_super_enable` outside the documented P3 exception, nor
+  to `/robot/set_super_stop` for routine cancellation.
+- Grippers are observe-only.
 
 ## Terminal layout
 
-| # | What | Command |
+| # | Purpose | Command |
 |---|---|---|
-| 1 | Bridge | `python3 scripts/py_bridge.py` |
-| 2 | Shims | `ros2 launch baxter_hardware_bridge hardware_bringup.launch.py` |
-| 3 | Working terminal (clients, `baxrun`/`baxtool`) | — |
-| 4 | ROS 1 recorder | `bash scripts/record_ros1.sh` |
-| 5 | ROS 2 recorder | `source scripts/baxter_env.sh && bash scripts/record_ros2.sh` |
+| 1 | Bridge (leave running) | `python3 scripts/py_bridge.py` |
+| 2 | Shims (leave running) | `ros2 launch baxter_hardware_bridge hardware_bringup.launch.py` |
+| 3 | Working terminal — clients, `baxrun`/`baxtool` | — |
+| 4 | Scoped recorder, started per phase | `bash scripts/record_ros1.sh` / `record_ros2.sh` |
 
-Every terminal: `cd ~/baxter_ros2_jazzy && source scripts/baxter_env.sh` first.
-Define `baxrun`/`baxtool` in terminal 3 (`hardware_test_commands.md` §6).
-
----
-
-## S0 — Bring-up (09:00–09:30)
-
-**Purpose:** get from cold laptop to a live, verified, recording session.
-
-Run sheet §0 (network pre-flight — the route check is the one that actually
-catches problems), §1 (env), §2 (bridge), §3 (sonar off), §4 (shims). Then start
-both recorders (terminals 4 and 5) and confirm each printed its snapshot files.
-
-**Abort criteria:** any pre-flight step fails → stop and fix the network. Do not
-proceed with a half-working bridge; every later result becomes untrustworthy.
-
-**Record:** the recorders' inventory snapshots (`topics_*.txt`, `nodes_*.txt`,
-`params_*.yaml`) land automatically — this is the first Noetic-notes input.
-
-**Noetic notes:** paste the topic/node counts and anything surprising in the
-inventory into `docs/noetic_native_notes.md` § Inventory.
+Define `baxrun`/`baxtool` in terminal 3 (`hardware_test_commands.md` §6). They need the
+`baxter-noetic` image on the **host** daemon — if a prune removed it again, rebuild per
+`docker/local_image_inventory.md`; `docs/container_free_path.md` records what could
+replace the container and why the untuck currently cannot.
 
 ---
 
-## S1 — I11 interlock re-verify (09:30–09:45)
+## P1 — Bring-up (~15 min)
 
-**Purpose:** re-prove the safety gate on today's build before the robot can
-move. Cheap, zero motion, and it catches a broken deploy early.
+Sheet §0–4, in this order: network pre-flight → bridge → **sonar off** → non-motion
+check → shims.
 
-Run sheet §5 (5a–5c) and §5d, robot still disabled.
+```bash
+python3 scripts/sonar_ctl.py off
+python3 scripts/sonar_ctl.py status   # confirm the bitmask landed (0)
+```
 
-**Abort criteria:** any goal **accepted** while the robot is disabled → stop the
-day and debug at the desk. This is the interlock that makes everything else safe.
+**Pass:** bridged topics arrive at a steady rate; both `follow_joint_trajectory`
+action servers advertise. **Abort** on `deserialize failed` — that is a wire-layout
+mismatch, not a transient.
 
-**Record:** copy the rejection reasons verbatim into the day log.
+Capture the baseline: initial `/robot/state` and the tucked joint positions.
 
----
+## P2 — Safety interlocks, zero motion (~15 min)
 
-## S2 — The enable fix (09:45–10:30)
+Sheet §5 (5a–5c) and §5d, robot still disabled: bad joint names, wrong position count,
+valid goal blocked by the safety gate, `t=0` first point, out-of-limits position,
+over-velocity segment, over-clamp segment, stale joint states.
 
-**Purpose:** clear the latched `left_s1` collision force-field that blocked the
-last session. This is the gate the whole day hangs on.
+No recording — the console is the result.
 
-Primary: `baxtool tuck_arms.py -u` (sheet §6). **Untuck is a large whole-arm
-motion** — clear the workspace first.
+**Pass:** every goal rejected with the expected reason.
+**Abort the session** if any goal is *accepted* while the robot is disabled; that is
+the interlock every later phase depends on.
+**Improvement hook:** any rejection message that would not tell you what to fix.
 
-`baxrun`/`baxtool` need the `baxter-noetic` Docker image; if a prune removed it,
-rebuild per `docker/local_image_inventory.md`. `docs/container_free_path.md` records
-what could replace the container and why the untuck specifically cannot yet — every
-other stage of this plan already runs without it.
+## P3 — Enable and untuck (the blocker) (~45 min)
 
-Decision tree:
+**Large whole-arm motion. Clear workspace, e-stop in hand.** Sheet §6.
 
-1. **Untuck completes** → check arm positions, not the enable flag (a successful
-   untuck can end `enabled: False` by design). If disabled, `baxtool
-   enable_robot.py -e` should now succeed with the arms clear of the field.
-   Confirm `baxter_safety_check` shows `safe_for_motion=True`. → S3.
-2. **Hangs without enabling** → the collision-suppression theory is wrong. Do
-   the supervised manual suppression procedure (sheet §6, four terminals, 15 s
-   cap). Do **not** re-check homing, calibration or health — the 2026-07-22
-   sweep already cleared those.
-3. **Still disabled after both** → **pivot the day.** Do not burn hours on it.
-   Go to S6 extended: harvest inventory, rates, params, diagnostics, sonar/IR
-   and gripper-state bags. A full non-motion dataset plus complete Noetic notes
-   is still a productive day, and it is exactly what the native ROS 1 stack
-   needs. Skip S3–S5.
+Start a scoped ROS 1 capture *before* the attempt — `/robot/state`, the collision-state
+topics and `/diagnostics`. The force-field payload is the evidence either outcome
+depends on:
 
-**Abort criteria:** untuck motion looks abnormal → e-stop.
+```bash
+TOPICS_RE='/robot/state|/diagnostics|/robot/limb/.*/collision_.*_state' bash scripts/record_ros1.sh
+```
 
-**Record:** `/diagnostics` during the enable attempts is already in the ROS 1
-bag. Note the wall-clock time of each attempt so it can be found in the bag.
+Primary: `baxtool tuck_arms.py -u`.
 
-**Noetic notes:** exact enable sequence and timing that worked — the native
-stack has to reimplement this, and `enable_robot.py`'s single 2 s wait is
-demonstrably not enough.
+1. **Untuck completes** → verify by arm **position** (`s1 ≈ -1.0`), *not* the enable
+   flag: `tuck_arms.py` disables on exit if a collision flag remains, so a successful
+   untuck can end `enabled: False`. Re-enable, then confirm
+   `ros2 run baxter_hardware_bridge baxter_safety_check` → `safe_for_motion=True`. → P4.
+2. **Hangs without enabling** → supervised manual collision-suppression procedure
+   (sheet §6, four terminals, 15 s cap). Do **not** re-check homing, calibration or
+   health — the 2026-07-22 sweep cleared all three.
+3. **Still disabled** → **pivot**: skip P4–P7 and go to P8. Understanding *why* it will
+   not enable is the most valuable thing this session can produce.
 
----
+**Improvement hook:** if `tuck_arms.py -u` works where `enable_robot.py -e` fails, that
+20 Hz republish plus collision suppression belongs in our own enable path — see
+`container_free_path.md`.
 
-## S3 — I12 supervised motion gate (10:30–11:15)
+## P4 — Supervised motion gate, I12 (~45 min)
 
-**Purpose:** first real motion through the ROS 2 command path. Closes the gate
-that has been blocked since 2026-07-22.
+Sheet §7, then §7b. Scoped recording on — this is where the tracking numbers come from.
 
-Run sheet §7 (`sim_tiny_trajectory`, both arms, out and back), then §7b
-(`cancel_after_sec:=1.0`, cancel-and-hold).
+1. `sim_tiny_trajectory`, both arms, out and back (`s1` by 0.35 rad over 3 s at
+   `speed_ratio` 0.1).
+2. Cancel-and-hold: same client with `cancel_after_sec:=1.0`.
 
-**Abort criteria:** anything unexpected → e-stop. A path/goal **tolerance abort
-is not a failure** — it routes to S4.
+**Pass:** goals succeed *with feedback*; small `max_error`; on cancel the arm stops and
+**holds**, does not sag. A tolerance abort is not a failure — it routes to P5.
+**Abort:** anything unexpected → e-stop.
 
-**Record:** per-arm `max_error` values; whether feedback messages appeared; on
-cancel, whether the arm held or sagged.
+## P5 — Tolerance characterisation (~45 min)
 
-**Noetic notes:** observed lag between command and motion; how the arm behaves
-when a goal is cancelled.
+`path_tolerance_rad=0.2` and `stopped_velocity_tolerance=0.25` are Rethink defaults,
+desk-tuned here against a mock with no physics. Rather than only reacting to a trip,
+**measure** from the P4 capture: worst lag between `joint_command` and `joint_states`
+(cross-checked against `/robot/ref_joint_states`), and joint velocity at goal end.
 
----
+If P4 tripped on a move the arm visibly completed, relaunch the shims with
+`-p path_tolerance_rad:=0.3` and converge on the **loosest value that still passes**.
 
-## S4 — Tolerance tuning (11:15–12:00)
+**Abort:** still tripping at 0.3 with visible lag → not a tolerance problem, suspect
+bridge backpressure; stop commanding motion and capture for desk analysis.
+**Improvement:** the winning values become the new shim defaults.
 
-**Purpose:** `path_tolerance_rad=0.2` and `stopped_velocity_tolerance=0.25` were
-tuned against a mock with no physics. A real series-elastic arm lags. Find the
-values that hold on real hardware.
+## P6 — Motion experiments, as far as they teach something
 
-Only needed if S3 aborted on a move the arm visibly completed. Relaunch the
-shims with `-p path_tolerance_rad:=0.3` (and `-p stopped_velocity_tolerance:=…`
-if the goal check is what fired), then re-run §7. Converge on the **loosest
-value that still passes**, not the first one that works.
+Escalate, checking the arm between steps, recording only the runs being compared:
 
-**Abort criteria:** still tripping at 0.3 with visible arm lag → this is not a
-tolerance problem, suspect bridge backpressure. Stop commanding motion, keep the
-recorders running, and capture the state for desk analysis.
+1. **Speed sweep** — `speed_ratio` 0.1 → 0.2 → 0.3 (a shim parameter; relaunch to
+   change it). A few runs each: does tracking error grow with speed?
+2. **Cancel sweep** — `cancel_after_sec` 0.5, 1.0, 2.0.
+3. **Gravity-comp observation** — enabled but uncommanded; how far does the arm drift?
+4. **`joint_command_timeout` transition**, supervised, once: stop the shims and watch
+   the arm go from held to gravity-comp.
 
-**Record:** every value tried and its result. The winning values go into the
-shim defaults after the day — `record_ros2.sh` captures the live params with
-each bag, so a recording is always matched to the tolerances that produced it.
+Log one line per run: time, speed ratio, params, what the arm looked like.
 
----
+**Improvement hooks:** does the 100 Hz command rate hold under load? Does the per-cycle
+clamp ever bind? Is `speed_ratio` 0.1 unnecessarily slow for real work?
 
-## Lunch (12:00–12:45)
+## P7 — MoveIt on hardware (stretch, only if P4/P5 were clean)
 
-`baxtool enable_robot.py -d`. Ctrl-C both recorders and verify the bags closed
-(`rosbag info` in the container / `ros2 bag info`). Restart recorders and
-re-enable afterwards. This is deliberate crash-proofing: half the day's data is
-now safely on disk.
+`ros2 launch baxter_moveit_config hardware_moveit.launch.py`, plan in the RViz
+MotionPlanning panel, **inspect the preview**, then Execute. Trajectories go through
+the same shims, so validation, safety gate and clamp still apply.
 
----
+`moveit_left_tiny` cannot drive this — it refuses unless move_group is on simulated
+time, deliberately. Only the wiring is verified (move_group loads both shim action
+servers), never execution.
 
-## S5 — Motion experiments (12:45–15:30)
+## P8 — Noetic harvest and bridge hygiene, no motion (~45 min)
 
-**Purpose:** generate the dataset that drives post-day code improvement. The
-bags *are* the deliverable — command-vs-actual tracking and bridge latency both
-fall out of data already being recorded on both sides.
+1. `rostopic hz` on `/robot/joint_states`, `/robot/ref_joint_states`, `/robot/state`,
+   `joint_command`; `rosservice list`; `rosmsg show` for the messages a native stack
+   must implement.
+2. **Phantom-node check** — killed scripts historically left stale registrations. After
+   stopping a bridge-side script, confirm `rosnode list` is clean.
+3. Fill `docs/noetic_native_notes.md` while the robot is in front of you.
 
-Escalate, checking the arm after each step:
+## P9 — Shutdown and write-up
 
-1. `sim_tiny_trajectory` repeated at `speed_ratio` 0.1, then 0.2, then 0.3
-   (shim param). Several runs at each — repeats are what make tracking error
-   measurable rather than anecdotal.
-2. Cancels at varied times into the trajectory (0.5 s, 1.0 s, 2.0 s).
-3. Single-arm runs, both arms, to see whether load or bridge traffic changes
-   tracking.
-4. A quiet period enabled but uncommanded, to record gravity-comp behavior.
-5. **Stretch — MoveIt on hardware**, only if S3/S4 were clean and time allows:
-   `ros2 launch baxter_moveit_config hardware_moveit.launch.py`, then plan a
-   small motion in the RViz MotionPlanning panel, **inspect the preview**, and
-   only then Execute. Planned trajectories go through the same shims, so goal
-   validation, the safety gate and the clamp all still apply.
-   `moveit_left_tiny` cannot drive this — it refuses to move unless move_group
-   is on simulated time, by design. Rehearse the RViz flow against `mock_robot`
-   before the day; only the wiring has been verified so far, not execution.
+`baxtool tuck_arms.py -t`, `baxtool enable_robot.py -d` (sheet §8). Close any recording
+and verify the bags closed, then Ctrl-C the shims, then the bridge, in that order.
 
-**Abort criteria:** e-stop rule stands. A tolerance abort at a higher speed →
-back off one speed step and note the ceiling.
+If a recorder was killed hard, the ROS 2 bag has no `metadata.yaml` and `ros2 bag info`
+fails — `ros2 bag reindex <dir>` rebuilds it.
 
-**Record:** a one-line note per run — time, speed ratio, params, what the arm
-looked like. Without the timestamps the bags are much harder to segment later.
+Then the actual deliverable: **the improvement list**, in `logs/I18_hardware_day.log.md`,
+each item naming the observation behind it and the file it would change. Update the
+sheet's "Where the last session stopped" (including sonar left off) and the gate-status
+table.
 
----
+## Decision points
 
-## S6 — Noetic API harvest (15:30–16:15)
-
-**Purpose:** the native ROS 1 stack needs to know how the robot actually
-behaves, not how the SDK documents it. No motion commands in this stage.
-
-From `baxrun`: `rostopic hz` on the key topics (joint_states, robot/state,
-joint_command), `rosservice list`, `rosmsg show` on the messages the native
-stack will implement. One supervised observation of the
-`joint_command_timeout` transition: stop the shims briefly and watch the arm go
-from held to gravity-comp once.
-
-Fill in `docs/noetic_native_notes.md` while the robot is in front of you.
-
----
-
-## S7 — Shutdown and restore (16:15–16:45)
-
-`baxtool tuck_arms.py -t`, `baxtool enable_robot.py -d` (sheet §8). Ctrl-C the
-recorders and verify the bags closed. Ctrl-C shims, then the bridge, in that
-order.
-
-Then, before leaving: update the sheet's "Where the last session stopped",
-update the gate-status table, and write `logs/I18_hardware_day.log.md`.
-
----
-
-## Hard decision points
-
-| When | Question | If no |
+| After | Question | If no |
 |---|---|---|
-| End of S2 | Can the robot be enabled at all? | Pivot to non-motion harvest, skip S3–S5 |
-| End of S3 | Do the tolerances hold on a real arm? | S4 tuning; if that fails, stop motion and analyse |
-| 15:30 | — | No new experiments regardless of progress. Protect S6 and S7. |
+| P3 | Can the robot be enabled at all? | Pivot to P8, skip motion entirely |
+| P4 | Do the tolerances hold on a real arm? | P5 tuning; if that fails, stop motion and analyse |
+| — | Time running short? | Stop new experiments and protect P8 and P9 |
 
-## After the day
+## Reading the results
 
-Bags and snapshots are in `data/sessions/<date>/{ros1,ros2}/` (gitignored). The
-python `rosbags` library reads both ROS 1 `.bag` and ROS 2 files with one API:
-
-- **Bridge latency:** match the same `/robot/joint_states` message across the two
-  bags by `header.stamp` and diff the receive times. Both recorders run on this
-  laptop, so the clocks are the same and the deltas mean something.
-- **Tracking error:** join the ROS 1 side `joint_command` against
-  `joint_states` — that is the command as actually delivered on the wire, not
-  the setpoint we intended to send.
+Python `rosbags` reads ROS 1 `.bag` and ROS 2 mcap through one API. Tracking error:
+`joint_command` against `joint_states`, cross-checked against `/robot/ref_joint_states`.
+Bridge latency: the same `/robot/joint_states` message in both captures matched by
+`header.stamp` — both recorders run on this laptop, so the clocks agree. Drops: compare
+message counts for the same topic across the two sides.
