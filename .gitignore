@@ -8,6 +8,9 @@ __pycache__/
 *.egg-info/
 src/baxter_common_ros2/
 
+# Robot session recordings (bags + inventory snapshots) — local only, large
+data/
+
 # LLM agent workflow (local only; not part of the public OSS tree)
 plan/
 .cursor/

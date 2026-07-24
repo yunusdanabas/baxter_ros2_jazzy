@@ -5,6 +5,18 @@
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export LC_NUMERIC=C
 
+# An active conda/mamba env puts its own python3 first in PATH, but rclpy's C
+# extension is built for the system python3.12 — so `python3 scripts/py_bridge.py`
+# dies with "No module named 'rclpy._rclpy_pybind11'". Drop the conda install
+# from PATH for this session; nothing in the hardware path needs it.
+if [ -n "${CONDA_PREFIX}" ] && [ -n "${CONDA_EXE}" ]; then
+    _conda_root="$(dirname "$(dirname "${CONDA_EXE}")")"
+    PATH="$(echo "${PATH}" | tr ':' '\n' | grep -vF "${_conda_root}/" | paste -sd:)"
+    export PATH
+    echo "NOTE: dropped ${_conda_root} from PATH (rclpy needs the system python3)"
+    unset _conda_root
+fi
+
 # Robot. Address by mDNS hostname (from the robot's serial) — its DHCP lease
 # moves, so a hardcoded IP goes stale. Override BAXTER_HOST to use another.
 export BAXTER_HOST="${BAXTER_HOST:-011412P0024.local}"

@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-IMAGE="baxter-noetic:audit"
+IMAGE="${IMAGE:-baxter-noetic:n07}"
 CONTAINER="baxter_loopback_test"
 FROM_ROS1="/loopback_test/from_ros1"
 FROM_ROS2="/loopback_test/from_ros2"

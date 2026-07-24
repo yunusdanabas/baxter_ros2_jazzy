@@ -9,6 +9,16 @@ gate passes; this runbook is not a support claim.
 - ROS 2 Jazzy workspace built: `colcon build --base-paths src --packages-skip baxter_bridge`
 - Baxter powered on with ROS 1 master running
 
+> **Source `scripts/baxter_env.sh` before building, not just before running.**
+> An active conda/mamba env puts its `python3` first on `PATH`, and setuptools
+> bakes that interpreter into the shebang of every installed entry point. The
+> build succeeds, then every `ros2 run` and the shim launch fail at runtime with
+> `No module named 'rclpy._rclpy_pybind11'`, because rclpy's C extension is built
+> for the system python3.12. `baxter_env.sh` strips conda from `PATH`, which fixes
+> both the build and the run. Check with
+> `head -1 install/baxter_hardware_bridge/lib/baxter_hardware_bridge/dry_run_test` —
+> it must say `/usr/bin/python3`.
+
 ## Network Setup (do this first — it is where sessions actually get stuck)
 
 Baxter is addressed by its mDNS hostname **`011412P0024.local`** (from the
@@ -134,7 +144,10 @@ Run these BEFORE any motion:
 5. **Action servers**: `ros2 action list` shows both follow_joint_trajectory actions
 6. **Safety check**: `ros2 run baxter_hardware_bridge baxter_safety_check` prints safe=true
 
-## Head Sonar (optional, non-motion)
+## Head Sonar — turn it OFF (required, non-motion)
+
+**Disable the head sonar at bring-up, before the shims start.** This is a
+standing requirement for sessions here, not an optional convenience.
 
 The 12-transducer head sonar ring is on by default and is noisy in a lab. It
 is controlled by a bitmask on `/robot/sonar/head_sonar/set_sonars_enabled`

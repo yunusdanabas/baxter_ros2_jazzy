@@ -29,6 +29,8 @@ This documentation covers the sim-first baseline through I15, plus I10-prep hard
 | `known_issues.md` | Resolved defects with their root cause, and the benign log noise to ignore. |
 | `hardware_runbook.md` | Prep-only lab procedures for the hardware bridge; unsupported until I10. |
 | `hardware_test_commands.md` | Copy-paste command sheet for a full hardware session, with the interlock and malformed-goal checks. |
+| `hardware_day_plan.md` | Stage-by-stage schedule for a full day with the robot: order, time budget, abort criteria, and the fallback when the robot will not enable. |
+| `noetic_native_notes.md` | Robot-side behavior notes for a future native ROS 1 Noetic stack; filled in during robot days. |
 | `i12_completion_plan.md` | Working plan for finishing I12: remaining hardening, the checking/polish pass, and the robot-day sequence. Retire once the I12 gate passes. |
 | `package_map.md` | What is implemented, imported, skipped, and deferred. |
 | `repos_and_pins.md` | Default `.repos`, ECN SHA pin, and update rule. |

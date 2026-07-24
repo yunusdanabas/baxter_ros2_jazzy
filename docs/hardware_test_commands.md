@@ -9,6 +9,11 @@ hardcode it.
 **Safety, before anything:** clear workspace, e-stop within reach, nobody
 inside arm reach. The physical e-stop is the primary emergency stop.
 
+For a full day with the robot, run this sheet from `hardware_day_plan.md` — it
+gives the stage order, time budget, abort criteria and the fallback branch when
+the robot will not enable. Start `scripts/record_ros1.sh` and
+`scripts/record_ros2.sh` before step 5 so the whole session is on disk.
+
 ---
 
 ## 0. Pre-flight — network (do this first)
@@ -77,16 +82,17 @@ ros2 topic echo --once /robot/state
 
 ---
 
-## 3. Head sonar (optional)
+## 3. Head sonar — turn it OFF (required, before step 4)
 
 ```bash
-python3 scripts/sonar_ctl.py status
 python3 scripts/sonar_ctl.py off
-python3 scripts/sonar_ctl.py on      # restore
+python3 scripts/sonar_ctl.py status  # confirm the bitmask landed (0)
+python3 scripts/sonar_ctl.py on      # restore, 0x0FFF
 ```
 
-Resets to all-on when the robot reboots. Disabling removes proximity sensing —
-e-stop and supervision remain your safety controls.
+Resets to all-on when the robot reboots, so re-run it every session and after
+any reboot — never assume it carried over. Disabling removes proximity sensing —
+e-stop and supervision remain your safety controls. Leave it off at shutdown.
 
 ---
 
