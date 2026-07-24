@@ -77,7 +77,14 @@ publisher and one more `ROS1Subscriber` entry alongside the existing two
 Payoff out of proportion to the cost: it is the robot's **own commanded
 reference**, i.e. better tracking-error ground truth than anything reconstructed
 from our command side, and once bridged it is captured by `record_ros2.sh`,
-which removes the main reason to run ROS 1-side recording at all.
+which removes the main reason to run ROS 1-side recording at all. Measured at
+**140 Hz** on hardware (2026-07-24).
+
+> **Fix `ROS1Subscriber` first.** It negotiates TCPROS with only the *first*
+> publisher the master lists, so on a topic with several publishers it silently
+> receives a subset — `/robot/joint_states` arrives at 100 Hz instead of its real
+> 138 Hz, and gripper joint states never cross at all. Anything added here
+> inherits that bug. See `logs/I18_hardware_day.log.md` F13.
 
 ## 3. ROS 1-side recording (optional)
 

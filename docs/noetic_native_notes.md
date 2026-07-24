@@ -147,14 +147,26 @@ Highlights from `params_*.yaml` — the robot's own rosparam tree.
 
 ## Observed rates and behaviour (measured 2026-07-24)
 
-- `/robot/state` **101 Hz**, `/robot/joint_states` **100 Hz**.
-- `/robot/joint_states` has **two publishers**, `/realtime_loop` and
-  `/end_effector_publisher`, and consecutive messages **alternate** between a
-  17-joint set (`head_nod`, `head_pan`, + arms) and a 15-joint set (arms +
-  gripper). Both carry all 14 arm joints, so name lookups resolve either way —
-  but anything differencing consecutive samples for velocity is differencing
-  across two independent sources. A native stack should filter to one publisher
-  or key on the joints it needs.
+Measured directly on the ROS 1 side (`rostopic hz`, 2026-07-24):
+
+| Topic | Rate |
+|---|---|
+| `/robot/joint_states` | 138.8 Hz (aggregate of two publishers) |
+| `/robot/ref_joint_states` | 140.1 Hz |
+| `/robot/state` | 99.9 Hz |
+| `/robot/limb/*/gravity_compensation_torques` | 94.3 Hz |
+| `/robot/limb/*/joint_command` | 0 Hz when no goal is active |
+
+- `/robot/joint_states` has **two publishers**: `/realtime_loop` (~100 Hz, head +
+  all 14 arm joints, a 17-joint message) and `/end_effector_publisher` (~38 Hz,
+  gripper joints). A native stack subscribing normally through rospy gets both
+  merged; anything hand-rolling TCPROS must connect to **every** publisher the
+  master lists, or it silently receives only one (this is exactly what
+  `py_bridge.py` does today — it sees 100 Hz of the 138 Hz stream and never
+  receives gripper joint states).
+- 89 services are advertised, including
+  `/ExternalTools/<side>/PositionKinematicsNode/IKService` and the
+  `/cameras/{list,open,close,reset}` set.
 - Tracking on a real arm is **much better than the Rethink defaults assume**:
   worst error 0.0043–0.0077 rad across four `s1` moves of 0.35 rad over 3 s at
   `speed_ratio` 0.1, i.e. a 26× margin under a 0.2 rad path tolerance.
