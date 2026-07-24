@@ -190,10 +190,28 @@ verify by arm position rather than by the flag.
 
 Which statuses appear, at what level, in normal operation vs. faults.
 
-## _(to fill)_ Tolerances that worked on the real arm
+## Tolerances that worked on the real arm (measured 2026-07-24)
 
-The values that held on hardware, replacing the desk-tuned
-`path_tolerance_rad=0.2` / `stopped_velocity_tolerance=0.25` defaults.
+Two different quantities that are easy to confuse, and the confusion matters:
+
+| Quantity | Value | What it is |
+|---|---|---|
+| Settled error at goal end | 0.0043–0.0078 rad | how close the arm parks; what a client's `max_error` reports |
+| **In-flight lag during motion** | **max 0.0352 rad** (p95 ≈ 0.012) | how far the arm trails its reference *while moving* |
+
+A path-tolerance-style limit governs the **second**, which is 4.5× the first.
+Sizing such a limit from settled error produces a value that false-trips.
+
+`path_tolerance_rad = 0.2` gives a 5.7× margin over the measured worst and is a
+reasonable default. `stopped_velocity_tolerance = 0.25` never came close to firing
+— every goal settled within 0.01 s.
+
+`s1` dominates the lag on both arms; every other joint stays under 0.0116 rad. It
+is the shoulder pitch and carries the most gravity load, so a per-joint limit could
+be much tighter everywhere else.
+
+All of this is **gentle motion only** — every trajectory ran far below the
+2.0 rad/s per-cycle clamp. Expect lag to grow with speed.
 
 ## _(to fill)_ Grippers, sonar, IR, cameras
 

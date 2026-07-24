@@ -369,11 +369,15 @@ Goal tolerance violated: left_s1 still moving at 0.xxx rad/s (limit 0.250 rad/s)
 `path_tolerance_rad` (0.2) and `stopped_velocity_tolerance` (0.25) are Rethink's
 own defaults, desk-tuned here against a mock with no physics.
 
-> **Measured 2026-07-24: the concern was backwards.** Neither fired. Worst
-> tracking error across four real trajectories was **0.0077 rad**, a 26× margin
-> under the 0.2 rad path tolerance. These limits are too *loose* to catch a real
-> fault, not too tight. Do not reach for `-p path_tolerance_rad:=0.3`; tighten
-> them against the speed sweep instead. See `logs/I18_hardware_day.log.md` F3.
+> **Measured 2026-07-24: the concern was backwards, and 0.2 is about right.**
+> Neither fired. Worst *in-flight* lag, computed from the bag over the windows
+> where commands were actually streaming, is **0.0352 rad** — so 0.2 leaves a
+> 5.7× margin, an ordinary engineering one. Do not reach for
+> `-p path_tolerance_rad:=0.3`, and do **not** tighten to 0.05: that would leave
+> only 1.42× and false-trip on moves that currently succeed. See
+> `logs/I18_hardware_day.log.md` F22, which corrects the earlier F3 figure — that
+> one divided by the *settled* error, which is 4.5× smaller than the lag this
+> limit actually governs.
 
 Guard rail already proven: with the arms tucked (`s1=-2.175`, outside the
 `[-2.147, 1.047]` limit table) the script refuses to move and exits 1 —
