@@ -8,6 +8,10 @@ SDK documents.
 Seeded from the ROS 2 port's hardware sessions. Sections marked _(to fill)_ get
 filled during a robot day — see `docs/hardware_day_plan.md` stage S6.
 
+`docs/container_free_path.md` is the practical head start: the enable sequence and
+the reference-joint-state plumbing described there are components this native stack
+needs anyway, written against `py_bridge.py`'s pure-Python ROS 1 primitives.
+
 ## Robot identity
 
 | Field | Value |

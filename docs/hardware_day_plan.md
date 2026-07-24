@@ -83,6 +83,11 @@ last session. This is the gate the whole day hangs on.
 Primary: `baxtool tuck_arms.py -u` (sheet §6). **Untuck is a large whole-arm
 motion** — clear the workspace first.
 
+`baxrun`/`baxtool` need the `baxter-noetic` Docker image; if a prune removed it,
+rebuild per `docker/local_image_inventory.md`. `docs/container_free_path.md` records
+what could replace the container and why the untuck specifically cannot yet — every
+other stage of this plan already runs without it.
+
 Decision tree:
 
 1. **Untuck completes** → check arm positions, not the enable flag (a successful
