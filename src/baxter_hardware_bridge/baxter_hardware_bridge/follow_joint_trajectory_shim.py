@@ -285,6 +285,68 @@ class FollowJointTrajectoryShim(Node):
             self._publish_command(held)
             time.sleep(period)
 
+    def _normalized_points(self, traj):
+        """Put a goal trajectory into this shim's joint order and drop a leading
+        start-state point. Returns (points, rejection_reason).
+
+        Two things real planners do that a naive reading of the action spec does
+        not lead you to expect, both confirmed against MoveIt:
+
+        * The joint order is the planner's, not ours -- MoveIt sends them
+          alphabetically (e0, e1, s0, s1, w0, w1, w2). The action defines the
+          mapping by *name*, so any permutation is legal and we reorder rather
+          than reject.
+        * Point 0 is the current state at time_from_start=0, which standard
+          controllers treat as "start here". We drop it so the
+          strictly-increasing-time rule still guards the case it was written
+          for: a t=0 point that is NOT where the arm is, which would exit the
+          interpolation loop immediately and command the raw target in one jump.
+        """
+        names = list(traj.joint_names)
+        if sorted(names) != sorted(self._joints):
+            return None, (
+                f"joint names mismatch. Expected {self._joints}, got {names}"
+            )
+        for i, point in enumerate(traj.points):
+            if len(point.positions) != len(self._joints):
+                return None, (
+                    f"point {i} has {len(point.positions)} positions, "
+                    f"expected {len(self._joints)}"
+                )
+
+        order = [names.index(joint) for joint in self._joints]
+        if order == list(range(len(self._joints))):
+            points = list(traj.points)
+        else:
+            points = []
+            for point in traj.points:
+                reordered = JointTrajectoryPoint()
+                reordered.positions = [point.positions[i] for i in order]
+                reordered.time_from_start = point.time_from_start
+                points.append(reordered)
+
+        if not points:
+            return points, None
+        first = points[0]
+        t0 = first.time_from_start.sec + first.time_from_start.nanosec / 1e9
+        if t0 > 0.0:
+            return points, None
+        gap = max(
+            abs(pos - measured)
+            for pos, measured in zip(first.positions, self._latest_positions)
+        )
+        # Reuse the path tolerance rather than adding a knob: a genuine start
+        # state comes from the current robot state, so the gap is ~0 in practice.
+        if gap > self._path_tolerance:
+            return points, (
+                f"point 0 has time_from_start=0 but is {gap:.3f} rad from the "
+                f"measured pose (limit {self._path_tolerance:.3f} rad); a t=0 "
+                f"point is only accepted as the current start state"
+            )
+        if len(points) == 1:
+            return points, "trajectory has no points after the start state"
+        return points[1:], None
+
     def _validate_values(self, points) -> Optional[str]:
         """Check positions and timing. Returns a rejection reason, or None.
 
@@ -330,22 +392,10 @@ class FollowJointTrajectoryShim(Node):
         return None
 
     def _goal_callback(self, goal_request) -> GoalResponse:
-        goal_joints = goal_request.trajectory.joint_names
-        if goal_joints != self._joints:
-            self.get_logger().error(
-                f"Rejected: joint names mismatch. Expected {self._joints}, "
-                f"got {goal_joints}"
-            )
+        points, reason = self._normalized_points(goal_request.trajectory)
+        if reason is not None:
+            self.get_logger().error(f"Rejected: {reason}")
             return GoalResponse.REJECT
-
-        points = goal_request.trajectory.points
-        for i, point in enumerate(points):
-            if len(point.positions) != len(self._joints):
-                self.get_logger().error(
-                    f"Rejected: point {i} has {len(point.positions)} positions, "
-                    f"expected {len(self._joints)}"
-                )
-                return GoalResponse.REJECT
 
         age = self._joint_states_age_sec()
         if age > self._joint_states_stale_sec:
@@ -392,13 +442,16 @@ class FollowJointTrajectoryShim(Node):
     def _run_trajectory(self, goal_handle):
         goal: FollowJointTrajectory.Goal = goal_handle.request
         traj = goal.trajectory
-        points: List[JointTrajectoryPoint] = traj.points
+        # Same view of the trajectory the goal was validated against, so the two
+        # cannot disagree about whether a leading start-state point is present.
+        points: Optional[List[JointTrajectoryPoint]]
+        points, norm_reason = self._normalized_points(traj)
 
-        if not points:
+        if not points or norm_reason is not None:
             goal_handle.abort()
             return FollowJointTrajectory.Result(
                 error_code=FollowJointTrajectory.Result.INVALID_GOAL,
-                error_string="Empty trajectory",
+                error_string=norm_reason or "Empty trajectory",
             )
 
         # The arm is where the encoders say it is, not where the last goal left

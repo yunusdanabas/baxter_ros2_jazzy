@@ -579,6 +579,99 @@ def run_test() -> bool:
             results,
         )
 
+        # --- Test 21: MoveIt's leading start-state point is accepted ---
+        # MoveIt emits the current state as point 0 at time_from_start=0 and
+        # expects the controller to treat it as "start here". Confirmed against
+        # a real planner: 33 waypoints, point 0 at t=0 exactly on the measured
+        # pose. Rejecting it made MoveIt unusable on hardware.
+        test_node.get_logger().info("Test 21: leading t=0 start state accepted")
+        start = list(shim._latest_positions)
+        moveit_target = list(start)
+        moveit_target[1] = moveit_target[1] + 0.1  # left_s1
+        result = send_and_wait(
+            test_node,
+            client,
+            make_goal(LEFT_JOINTS, [(start, 0.0), (moveit_target, 1.0)]),
+            "Test 21 MoveIt-style trajectory",
+            results,
+        )
+        if result is not None:
+            if result.error_code != 0:
+                results.append(
+                    f"FAIL: Test 21 error_code={result.error_code} "
+                    f"({result.error_string})"
+                )
+            else:
+                results.append("PASS: Test 21 leading t=0 start state accepted")
+        time.sleep(0.3)
+
+        # --- Test 22: a t=0 point that is NOT the start state still rejects ---
+        # This is the case the strictly-increasing-time rule exists for: it would
+        # exit the interpolation loop immediately and command the raw target in a
+        # single jump. Test 21 must not have weakened it.
+        test_node.get_logger().info("Test 22: t=0 far from measured still rejected")
+        jump = list(shim._latest_positions)
+        jump[1] = jump[1] + 0.9  # well beyond path_tolerance_rad
+        expect_reject(
+            test_node,
+            client,
+            make_goal(LEFT_JOINTS, [(jump, 0.0), (jump, 1.0)]),
+            "Test 22 t=0 jump",
+            results,
+        )
+
+        # --- Test 23: a trajectory that is only a start state has nothing to do ---
+        test_node.get_logger().info("Test 23: start state alone rejected")
+        expect_reject(
+            test_node,
+            client,
+            make_goal(LEFT_JOINTS, [(list(shim._latest_positions), 0.0)]),
+            "Test 23 start state only",
+            results,
+        )
+
+        # --- Test 24: planner joint order is honoured, not rejected ---
+        # MoveIt sends joints alphabetically (e0, e1, s0, s1, w0, w1, w2). The
+        # action defines the mapping by name, so any permutation is legal and the
+        # shim must reorder. Verified by moving exactly one joint and checking the
+        # arm went where the *names* said, not where the positions sat.
+        test_node.get_logger().info("Test 24: permuted joint order honoured")
+        permuted = sorted(LEFT_JOINTS)
+        base = dict(zip(LEFT_JOINTS, shim._latest_positions))
+        target = dict(base)
+        target["left_s1"] = base["left_s1"] + 0.1
+        result = send_and_wait(
+            test_node,
+            client,
+            make_goal(permuted, [([target[j] for j in permuted], 1.0)]),
+            "Test 24 permuted joint order",
+            results,
+        )
+        if result is not None:
+            if result.error_code != 0:
+                results.append(
+                    f"FAIL: Test 24 error_code={result.error_code} "
+                    f"({result.error_string})"
+                )
+            else:
+                # The arm never moves here (mock_mode skips publishing), so check
+                # what was *commanded*. Comparing the whole vector is what catches
+                # a wrong permutation: a bad mapping puts the delta on some other
+                # joint rather than simply failing to move.
+                expected = [target[j] for j in LEFT_JOINTS]
+                worst = max(
+                    abs(c - e) for c, e in zip(shim._last_commanded, expected)
+                )
+                if worst > 0.01:
+                    results.append(
+                        f"FAIL: Test 24 commanded {[round(c, 3) for c in shim._last_commanded]}, "
+                        f"expected {[round(e, 3) for e in expected]} — positions "
+                        f"were not remapped to the goal's joint names"
+                    )
+                else:
+                    results.append("PASS: Test 24 permuted joint order honoured")
+        time.sleep(0.3)
+
         passed = bool(results) and all(r.startswith("PASS") for r in results)
         for r in results:
             test_node.get_logger().info(r)
