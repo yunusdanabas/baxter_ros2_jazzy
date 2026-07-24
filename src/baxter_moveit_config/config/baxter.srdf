@@ -60,6 +60,11 @@
   <disable_collisions link1="torso" link2="right_upper_shoulder" reason="Adjacent"/>
   <disable_collisions link1="left_upper_shoulder" link2="left_lower_shoulder" reason="Adjacent"/>
   <disable_collisions link1="left_lower_shoulder" link2="left_upper_elbow" reason="Adjacent"/>
+  <!-- Two links apart, so the Setup Assistant did not mark them Adjacent, but they
+       graze whenever the arm folds. Measured on hardware 2026-07-24 at the SDK's
+       own untuck pose: 1.7 mm interference, which made move_group refuse to plan
+       from the pose tuck_arms.py -u leaves the robot in. -->
+  <disable_collisions link1="left_upper_shoulder" link2="left_upper_elbow" reason="Default"/>
   <disable_collisions link1="left_upper_elbow" link2="left_lower_elbow" reason="Adjacent"/>
   <disable_collisions link1="left_lower_elbow" link2="left_upper_elbow_visual" reason="Default"/>
   <disable_collisions link1="left_lower_elbow" link2="left_upper_forearm" reason="Adjacent"/>
@@ -78,6 +83,7 @@
   <disable_collisions link1="l_gripper_r_finger" link2="l_gripper_r_finger_tip" reason="Adjacent"/>
   <disable_collisions link1="right_upper_shoulder" link2="right_lower_shoulder" reason="Adjacent"/>
   <disable_collisions link1="right_lower_shoulder" link2="right_upper_elbow" reason="Adjacent"/>
+  <disable_collisions link1="right_upper_shoulder" link2="right_upper_elbow" reason="Default"/>
   <disable_collisions link1="right_upper_elbow" link2="right_lower_elbow" reason="Adjacent"/>
   <disable_collisions link1="right_lower_elbow" link2="right_upper_elbow_visual" reason="Default"/>
   <disable_collisions link1="right_lower_elbow" link2="right_upper_forearm" reason="Adjacent"/>

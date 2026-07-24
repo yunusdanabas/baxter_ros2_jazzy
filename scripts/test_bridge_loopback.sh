@@ -49,10 +49,11 @@ docker exec "$CONTAINER" bash -lc \
 ECHO_PID=$!
 
 echo "=== Running py_bridge negotiation (host side) ==="
+# Via baxter_env.sh, not the ROS setup files directly: it also strips an active
+# conda install from PATH, without which rclpy fails to import here exactly as it
+# does on the robot.
 # shellcheck disable=SC1091
-source /opt/ros/jazzy/setup.bash
-# shellcheck disable=SC1091
-source "$REPO_ROOT/install/setup.bash"
+source "$SCRIPT_DIR/baxter_env.sh" >/dev/null
 
 PY_STATUS=0
 # `|| PY_STATUS=$?` keeps set -e from killing us before the diagnostics below.

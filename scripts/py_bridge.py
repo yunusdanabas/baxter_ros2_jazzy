@@ -333,7 +333,10 @@ class ROS1Subscriber:
         self._log = log_fn or (lambda _msg: None)
         self._running = False
         self._thread: Optional[threading.Thread] = None
-        self._sock: Optional[socket.socket] = None
+        # One socket and one receive thread per publisher of this topic.
+        self._socks: dict = {}
+        self._threads: dict = {}
+        self._pub_uris: set = set()
         self._sock_lock = threading.Lock()
         self._last_deser_warn = 0.0
         slave.register_publisher_update_handler(topic, self._on_publisher_update)
@@ -357,94 +360,111 @@ class ROS1Subscriber:
 
     def _close_sock(self) -> None:
         with self._sock_lock:
-            sock = self._sock
-            self._sock = None
-        if sock is not None:
+            socks = list(self._socks.values())
+            self._socks.clear()
+        for sock in socks:
             try:
                 sock.close()
             except Exception:
                 pass
 
     def _on_publisher_update(self, _publishers) -> None:
-        # Force the receive loop to drop and re-negotiate TCPROS.
+        # Force every receive loop to drop and re-negotiate TCPROS. The poll in
+        # _run picks the new publisher set up on its next pass.
         self._close_sock()
 
     def _run(self):
+        # A ROS 1 topic may have several publishers, and they carry different
+        # data: /robot/joint_states is /realtime_loop (head + arm joints) *and*
+        # /end_effector_publisher (gripper joints). Connecting to only the first
+        # silently drops the rest -- that cost us the gripper joints entirely,
+        # which in turn left MoveIt without a complete robot state. So keep one
+        # receive thread per publisher and re-poll for new ones.
         while self._running:
             try:
-                self._connect_and_receive()
+                master = xmlrpc.client.ServerProxy(self.master_uri)
+                code, msg, pub_uris = master.registerSubscriber(
+                    self.caller_id, self.topic, self.msg_type, self.slave.uri
+                )
+                if code != 1:
+                    raise RuntimeError(f"registerSubscriber failed: {msg}")
+                with self._sock_lock:
+                    self._pub_uris = set(pub_uris)
+                for uri in pub_uris:
+                    thread = self._threads.get(uri)
+                    if thread is None or not thread.is_alive():
+                        thread = threading.Thread(
+                            target=self._receive_from, args=(uri,), daemon=True
+                        )
+                        self._threads[uri] = thread
+                        thread.start()
             except Exception as exc:
                 if self._running:
                     self._log(f"ROS1 sub {self.topic} reconnecting after: {exc}")
-                    time.sleep(2)
-
-    def _connect_and_receive(self):
-        master = xmlrpc.client.ServerProxy(self.master_uri)
-        code, msg, pub_uris = master.registerSubscriber(
-            self.caller_id, self.topic, self.msg_type, self.slave.uri
-        )
-        if code != 1:
-            raise RuntimeError(f"registerSubscriber failed: {msg}")
-
-        if not pub_uris:
             time.sleep(2)
-            return
 
-        # pub_uris are the publishers' Slave API (XML-RPC) URIs, not TCPROS
-        # addresses — ask each publisher where its TCPROS socket actually is.
-        pub = xmlrpc.client.ServerProxy(pub_uris[0])
-        code2, msg2, proto = pub.requestTopic(
-            self.caller_id, self.topic, [["TCPROS"]]
-        )
-        if code2 != 1 or not proto:
-            raise RuntimeError(f"requestTopic failed: {msg2}")
-        _, pub_host, pub_port = proto
-
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(10)
-        try:
-            sock.connect((pub_host, pub_port))
-            header = _build_tcpros_header({
-                "md5sum": "*",
-                "type": self.msg_type,
-                "topic": self.topic,
-                "callerid": self.caller_id,
-            })
-            sock.sendall(header)
-            _parse_tcpros_header(_recv_frame(sock))
-
+    def _receive_from(self, pub_uri: str):
+        """Hold one TCPROS connection to a single publisher of this topic."""
+        while self._running:
             with self._sock_lock:
-                self._sock = sock
-
-            while self._running:
-                with self._sock_lock:
-                    if self._sock is not sock:
-                        break
-                data = _recv_frame(sock)
-                try:
-                    msg_obj = self.deserializer(data)
-                    self.callback(msg_obj)
-                except Exception as exc:
-                    now = time.monotonic()
-                    if now - self._last_deser_warn > 5.0:
-                        self._last_deser_warn = now
-                        self._log(
-                            f"ROS1 sub {self.topic} deserialize failed: {exc}"
-                        )
-        finally:
-            with self._sock_lock:
-                if self._sock is sock:
-                    self._sock = None
+                if pub_uri not in self._pub_uris:
+                    return
+            sock = None
             try:
-                sock.close()
-            except Exception:
-                pass
-            try:
-                master.unregisterSubscriber(
-                    self.caller_id, self.topic, self.slave.uri
+                # pub_uri is the publisher's Slave API (XML-RPC) address, not a
+                # TCPROS one -- ask it where its TCPROS socket actually is.
+                pub = xmlrpc.client.ServerProxy(pub_uri)
+                code, msg, proto = pub.requestTopic(
+                    self.caller_id, self.topic, [["TCPROS"]]
                 )
-            except Exception:
-                pass
+                if code != 1 or not proto:
+                    raise RuntimeError(f"requestTopic failed: {msg}")
+                _, pub_host, pub_port = proto
+
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(10)
+                sock.connect((pub_host, pub_port))
+                header = _build_tcpros_header({
+                    "md5sum": "*",
+                    "type": self.msg_type,
+                    "topic": self.topic,
+                    "callerid": self.caller_id,
+                })
+                sock.sendall(header)
+                _parse_tcpros_header(_recv_frame(sock))
+
+                with self._sock_lock:
+                    self._socks[pub_uri] = sock
+
+                while self._running:
+                    with self._sock_lock:
+                        if self._socks.get(pub_uri) is not sock:
+                            break
+                    data = _recv_frame(sock)
+                    try:
+                        self.callback(self.deserializer(data))
+                    except Exception as exc:
+                        now = time.monotonic()
+                        if now - self._last_deser_warn > 5.0:
+                            self._last_deser_warn = now
+                            self._log(
+                                f"ROS1 sub {self.topic} deserialize failed: {exc}"
+                            )
+            except Exception as exc:
+                if self._running:
+                    self._log(
+                        f"ROS1 sub {self.topic} <- {pub_uri} reconnecting after: {exc}"
+                    )
+                    time.sleep(2)
+            finally:
+                with self._sock_lock:
+                    if self._socks.get(pub_uri) is sock:
+                        del self._socks[pub_uri]
+                if sock is not None:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
 
 
 # ─── ROS 1 publisher (TCPROS server) ─────────────────────────────
