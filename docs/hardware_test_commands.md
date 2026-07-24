@@ -460,6 +460,14 @@ do **not** publish to `/robot/set_super_enable` at all.
 
 ## Where the last session stopped
 
+**2026-07-24 (second run) — MoveIt now plans and executes on hardware.** Three
+blockers cleared: the shim rejected MoveIt's leading `t=0` start point, rejected its
+alphabetical joint order, and the SRDF flagged a 1.7 mm false-positive self-collision
+that made move_group refuse to plan from the untuck pose itself. Also fixed: the
+bridge was connecting to only one of `/robot/joint_states`' two publishers, so
+gripper joints never reached ROS 2 (17 joints at 99.7 Hz → 19 at 123.6 Hz). Details
+in `logs/I18_hardware_day.log.md` F13, F18–F21.
+
 **2026-07-24 — I12 supervised motion PASSED.** The enable blocker is gone:
 `tuck_arms.py -u` cleared it on the first attempt, both arms then ran verified
 trajectories through the ROS 2 command path, and a 7-joint 1.56 rad move tracked
