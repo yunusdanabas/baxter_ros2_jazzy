@@ -1,7 +1,9 @@
 # Baxter Hardware Runbook
 
-Prep-only lab procedures. Hardware bridge support is **blocked** until the I10
-gate passes; this runbook is not a support claim.
+Lab procedures for the hardware path. The bridge, the action shims and
+supervised motion have all passed their gates on BR-01 `011412P0024` — I10/I11 on
+2026-07-22, I12 on 2026-07-24 — under supervision, at low speed. That is a
+starting point for a supervised session, not permission to run unattended.
 
 ## Prerequisites
 
@@ -58,11 +60,12 @@ ros2 run baxter_hardware_bridge dry_run_test    # no extra prerequisites
 bash scripts/test_bridge_loopback.sh            # needs the Docker image below
 ```
 
-`dry_run_test` prints `OVERALL: PASS` over 20 cases and runs under the same
+`dry_run_test` prints `OVERALL: PASS` over 25 cases and runs under the same
 `MultiThreadedExecutor` as production shim `main()` — it covers mid-goal cancel,
 unsafe abort, concurrent-goal rejection, the no-lurch seeding check, every
-goal-validation rejection below, the step clamp, the cancel-hold duration, and
-both tolerance aborts.
+goal-validation rejection below, the step clamp, the cancel-hold duration, both
+tolerance aborts, the MoveIt-shaped goals (leading `t=0` point, permuted joint
+order), and the second-publisher safety gate.
 
 For a closed-loop rehearsal — the shims commanding `mock_robot` for real, rather
 than skipping the publish — use the launch file and the supported client:
@@ -85,11 +88,29 @@ first and the results are nonsense rather than an obvious error. `Ctrl-C` on the
 launch does not always reap the nodes — check with
 `pgrep -af "mock_robot|follow_joint_trajectory_shim"` and expect no output.
 
+Two traps make "I stopped that" untrue, and both have cost real session time:
+
+- **`ros2 run` starts the node as a child process.** Killing the PID you
+  backgrounded kills the wrapper and leaves the node running, orphaned and still
+  publishing — `ros2 node list` will keep showing it, correctly. Find the real
+  one with `ps -eo pid,ppid,cmd | grep <node>` and kill that. Never use
+  `pkill -f`: the pattern matches the shell running it, which is how a
+  `ros2 launch` parent once died while its shims survived as orphans.
+- **`baxter_examples` runs the last built copy.** It is `ament_cmake` and
+  installs its scripts with `install(PROGRAMS ...)`, which copies even under
+  `--symlink-install`, so `ros2 run baxter_examples ...` will happily test code
+  you have edited but not built. `baxter_hardware_bridge` is `ament_python` and
+  *is* symlinked, which is what makes the inconsistency easy to miss. Build
+  before believing the output.
+
 `test_bridge_loopback.sh` negotiates real TCPROS against a genuine `roscore`, so
-it needs a local ROS 1 Noetic image tagged `baxter-noetic:audit`. Nothing in this
-repo builds it; if `docker image inspect baxter-noetic:audit` fails, build one
-from any `ros:noetic-ros-base` and tag it, or skip this check — it exercises the
-bridge protocol layer only, not the shim. Expected on success:
+it needs a local ROS 1 Noetic image, `baxter-noetic:n07` by default (override
+with `IMAGE=`). Nothing in this repo builds it; if
+`docker image inspect baxter-noetic:n07` fails, rebuild per
+`docker/local_image_inventory.md`, or skip this check — it exercises the bridge
+protocol layer only, not the shim. It must run on the **host** Docker daemon:
+ROS 1 needs host networking, and a `docker system prune` has removed this image
+before. Expected on success:
 `OVERALL: PASS (both directions negotiated real TCPROS with genuine rospy)`.
 
 ## Quick Start (3 terminals)
@@ -132,6 +153,18 @@ ros2 launch baxter_hardware_bridge hardware_bringup.launch.py
 This starts `FollowJointTrajectory` action servers on:
 - `/robot/limb/left/follow_joint_trajectory`
 - `/robot/limb/right/follow_joint_trajectory`
+
+The launch checks the graph first and **aborts** if `mock_baxter_robot` is
+running, because it publishes a permanently "safe" `/robot/state`:
+
+```text
+[ERROR] [launch]: ... mock_baxter_robot is running; it publishes a fake safe
+/robot/state. Stop it (kill by PID) and confirm `ros2 node list` is clean
+before bringing up the hardware shims.
+```
+
+Kill it by its **child** PID (see the two traps above), confirm `ros2 node list`
+is clean, and relaunch.
 
 ## I10 Non-Motion Gate Checklist
 
@@ -182,24 +215,29 @@ ros2 action send_goal /robot/limb/left/follow_joint_trajectory \
 See `hardware_test_commands.md` for the full copy-paste sequence, including
 the `baxtool` wrapper used below.
 
-> **Open problem (2026-07-22):** `enable_robot.py -e` fails with
-> `Failed to enable robot` from the tucked pose, with no e-stop, no fault and
-> a clean state.
+> **`enable_robot.py -e` cannot enable a tucked robot — use `tuck_arms.py -u`.**
+> Diagnosed 2026-07-22, confirmed 2026-07-24.
 >
-> Diagnosed the same day with zero motion. **Not** connectivity
-> (`/realtime_loop` attaches to a fresh enable publisher in 0.24 s, so the
-> requests arrived), **not** robot health (201 `/diagnostics` statuses, 200 at
-> level 0; `Robot Config [OK]`, control loop OK at 100 Hz), **not** calibration
-> (slopes present for all 14 joints, software `1.2.0.57`).
+> From the tucked pose `enable_robot.py -e` returns `Failed to enable robot`
+> with no e-stop, no fault and a clean state. The cause is the collision
+> force-field: `Collision detected on jointleft_s1`, `impact torque -3.57737`
+> against `scaled impact threshold 0`. The threshold scales with the
+> velocity/acceleration commands, which are 0 while disabled — so the flag stays
+> latched as long as the robot is disabled and tucked, and retrying can never
+> clear it.
 >
-> What remains is the collision force-field: `Collision detected on
-> jointleft_s1` with `impact torque -3.57737` against `scaled impact threshold
-> 0`. The threshold scales with the velocity/acceleration commands, which are 0
-> while disabled — so the flag stays latched as long as the robot is disabled
-> and tucked, and retrying `enable_robot.py` can never clear it. `tuck_arms.py`
-> suppresses collision avoidance and republishes enable at 20 Hz;
-> `enable_robot.py` does neither. See
-> `logs/I12_supervised_hardware_motion.log.md`.
+> Ruled out by measurement, so do not re-check them: connectivity
+> (`/realtime_loop` attaches to a fresh enable publisher in 0.24 s), robot health
+> (201 `/diagnostics` statuses, 200 at level 0; `Robot Config [OK]`, control loop
+> at 100 Hz), calibration (slopes present for all 14 joints, software
+> `1.2.0.57`).
+>
+> `tuck_arms.py -u` suppresses collision avoidance and republishes enable at
+> 20 Hz; `enable_robot.py` does neither. It worked on the **first attempt**, in
+> ~23 s. One documented expectation did not hold: the warning that a successful
+> untuck can end `enabled: False` is a *possible* outcome, not the normal one —
+> that run ended `ready=True enabled=True`. Check arm position (`s1 ≈ -1.0`),
+> not the flag. Evidence: `logs/I18_hardware_day.log.md` (F5).
 
 Enable and untuck with `tuck_arms.py`, which does both and handles the
 collision force-field (never hand-publish `/robot/set_super_enable`):
@@ -268,7 +306,14 @@ roscore &
 - Only one goal executes per arm; a second goal is rejected while one runs
 - Speed ratio defaults to 0.1 (10%) — keep it low for labs
 - Physical e-stop is the primary emergency stop
-- No motion until I10 gate passes
+- **Motion is refused unless exactly one node publishes `/robot/state`.** A
+  second publisher — a leftover `mock_baxter_robot`, an orphaned shim — makes it
+  unknowable whose state the gate just read, and a mock advertising "safe"
+  alongside the real disabled robot is how a goal gets accepted that must be
+  rejected. The rejection says
+  `CONTESTED: N publishers on /robot/state, expected 1`
+- `hardware_bringup.launch.py` refuses to start at all if `mock_baxter_robot` is
+  in the node list
 
 ### Goal validation
 
@@ -319,9 +364,9 @@ Tuning knobs on `follow_joint_trajectory_shim`, all settable with `--ros-args -p
 | Parameter | Default | Meaning |
 |---|---|---|
 | `max_step_rad_per_cycle` | `0.02` | Hard cap on how far one command may move a joint from the previous one. At 100 Hz that is 2 rad/s. The I12 move needs ~0.0012 rad/cycle, so it never binds normally. This is the backstop: every command passes through it, whatever the goal looked like |
-| `path_tolerance_rad` | `0.2` | How far a joint may lag its commanded setpoint before the goal aborts and holds. Rethink's `PositionJointTrajectoryActionServer.cfg` default; **desk-tuned only** — a real series-elastic arm lags in ways the mock never does, so watch for false aborts on the first hardware run |
+| `path_tolerance_rad` | `0.2` | How far a joint may lag its commanded setpoint before the goal aborts and holds. Rethink's `PositionJointTrajectoryActionServer.cfg` default. **Measured on hardware 2026-07-24:** worst in-flight lag 0.0352 rad at low speed, a 5.7× margin, nothing tripped. Do not tighten below 0.15 without fast-motion data — the 0.05 once proposed here would have caused nuisance aborts |
 | `goal_time_sec` | `0.1` | How long the final point keeps being commanded before the stopped-velocity check runs. Rethink's `goal_time`. Interpolation is linear, so without it the check samples the arm's cruise speed rather than its stopped speed |
-| `stopped_velocity_tolerance` | `0.25` | Speed above which a joint counts as still moving once the trajectory is done. Also from the legacy cfg. Needs the bridge's `velocity` array, which `deser_joint_state` does unpack |
+| `stopped_velocity_tolerance` | `0.25` | Speed above which a joint counts as still moving once the trajectory is done. Also from the legacy cfg. Needs the bridge's `velocity` array, which `deser_joint_state` unpacks. Never fired on hardware: every goal settled in ≤0.01 s |
 | `hold_duration_sec` | `1.0` | How long a canceled or tolerance-aborted goal keeps republishing its hold pose |
 | `joint_states_stale_sec` | `2.0` | Age at which `/robot/joint_states` is too old to accept a goal |
 | `speed_ratio` | `0.1` | Published to the robot on startup and each accepted goal |

@@ -1,7 +1,8 @@
 # Baxter Hardware Test — Command Sheet
 
-Copy-paste sheet for a full hardware session. Every command here was run
-against the real robot on 2026-07-22 unless marked **[not yet run]**.
+Copy-paste sheet for a full hardware session. Every command here has been run
+against the real robot: §0-§5 on 2026-07-22, and §6-§8 — enable, untuck,
+supervised motion, cancel-and-hold, shutdown — on 2026-07-24.
 
 Robot: `011412P0024.local` (mDNS). Its IP is a DHCP lease and **moves** — never
 hardcode it.
@@ -256,7 +257,7 @@ baxtool enable_robot.py -s     # status — read-only, safe  ✅ verified workin
 > e-stop in hand, nobody within reach.
 
 ```bash
-baxtool tuck_arms.py -u        # enable + untuck  [NOT YET RUN]
+baxtool tuck_arms.py -u        # enable + untuck  (worked first attempt, ~23 s)
 ```
 
 If that hangs without ever enabling, the collision-suppression theory is wrong.
@@ -327,7 +328,7 @@ ros2 run baxter_hardware_bridge baxter_safety_check
 
 ---
 
-## 7. I12 gate — supervised motion, both arms [not yet run]
+## 7. I12 gate — supervised motion, both arms
 
 > **Do not hand-write trajectories.** The shim now rejects a `time_from_start`
 > of 0 on the first point (§5d) and clamps every command to 0.02 rad/cycle, but
@@ -347,6 +348,26 @@ ros2 run baxter_examples sim_tiny_trajectory --ros-args \
 Moves s1 by 0.35 rad over 3 s at speed ratio 0.1, left arm then right, each
 outbound **and back**. Expected per arm:
 
+> **Speed is set by `duration`, not by `speed_ratio`.** Measured 2026-07-24:
+> tripling `speed_ratio` (0.1 → 0.2 → 0.3) changed tracking error not at all,
+> because the shim interpolates at 0.117 rad/s — far below the robot-side cap at
+> any of those settings. To actually stress tracking, shorten the move:
+>
+> ```bash
+> # 0.5 rad in 1.0 s = 0.50 rad/s. The shim's clamp is 2.0 rad/s.
+> ros2 run baxter_examples sim_tiny_trajectory --ros-args \
+>   -p left_action:=/robot/limb/left/follow_joint_trajectory \
+>   -p right_action:=/robot/limb/right/follow_joint_trajectory \
+>   -p joint_states_topic:=/robot/joint_states \
+>   -p duration:=1.0 -p offset:=0.5
+> ```
+>
+> The per-move log line reports the resulting rad/s. **Escalate one step at a
+> time**, checking the arm between runs — every tracking figure in these docs
+> describes gentle motion, and nothing above ~0.5 rad/s has been tried on
+> hardware. A goal that would exceed the clamp is rejected at accept time with
+> `needs X rad/s, limit is Y (max_step_rad_per_cycle)`.
+
 ```
 /robot/limb/<side>/follow_joint_trajectory outbound feedback: NNN messages
 /robot/limb/<side>/follow_joint_trajectory outbound verified: max_error=0.00xx rad
@@ -358,8 +379,8 @@ Reversible trajectories verified for both arms
 The feedback line is part of the I12 gate: the script now fails if a goal
 succeeds without publishing feedback.
 
-Two aborts are new here and have never run against a real arm — both stop the
-goal but keep holding, so the arm does not sag:
+Two aborts stop the goal but keep holding, so the arm does not sag. Neither
+fired on hardware in the 2026-07-24 session:
 
 ```
 Path tolerance violated: left_s1 lags its setpoint by 0.2xx rad (limit 0.200 rad)
@@ -367,7 +388,7 @@ Goal tolerance violated: left_s1 still moving at 0.xxx rad/s (limit 0.250 rad/s)
 ```
 
 `path_tolerance_rad` (0.2) and `stopped_velocity_tolerance` (0.25) are Rethink's
-own defaults, desk-tuned here against a mock with no physics.
+own defaults, and both have now been measured against a real arm.
 
 > **Measured 2026-07-24: the concern was backwards, and 0.2 is about right.**
 > Neither fired. Worst *in-flight* lag, computed from the bag over the windows
@@ -388,7 +409,7 @@ Guard rail already proven: with the arms tucked (`s1=-2.175`, outside the
 
 So if you see that, the arms are still tucked. Go back to step 6.
 
-### 7b. Cancel-and-hold test [not yet run]
+### 7b. Cancel-and-hold test
 
 ```bash
 ros2 run baxter_examples sim_tiny_trajectory --ros-args \
@@ -403,7 +424,7 @@ drift check on two later joint states. The arm must stop and hold, not fall.
 
 ---
 
-## 8. Shutdown / restore [not yet run]
+## 8. Shutdown / restore
 
 ```bash
 baxtool tuck_arms.py -t        # back to shipping pose
@@ -450,8 +471,8 @@ do **not** publish to `/robot/set_super_enable` at all.
 |---|---|
 | I10 non-motion | **PASS** (2026-07-22) |
 | I11 action shims / safety interlock | **PASS** (2026-07-22, zero motion) |
-| I12 command-path hardening | **DONE** (2026-07-23, no hardware) — F1–F4 and F10 from `logs/I12_prep_command_path_audit.log.md` are fixed and covered by `dry_run_test` (16/16). Rehearsed against `mock_robot`: both arms verified with feedback, cancel-hold verified. |
-| I17 pre-hardware hardening | **DONE** (2026-07-23, no hardware) — path tolerance and stopped-velocity monitoring added, `dry_run_test` now 20/20, closed-loop rehearsal re-run. See `logs/I17_pre_hardware_hardening.log.md`. |
+| I12 command-path hardening | **DONE** (2026-07-23, no hardware) — F1–F4 and F10 from `logs/I12_prep_command_path_audit.log.md` are fixed and covered by `dry_run_test` (25/25 as of 2026-07-25). Rehearsed against `mock_robot`: both arms verified with feedback, cancel-hold verified. |
+| I17 pre-hardware hardening | **DONE** (2026-07-23, no hardware) — path tolerance and stopped-velocity monitoring added, `dry_run_test` now 25/25, closed-loop rehearsal re-run. See `logs/I17_pre_hardware_hardening.log.md`. |
 | I12 supervised motion | **PASS** (2026-07-24) — `tuck_arms.py -u` cleared the enable blocker on the first attempt, then `sim_tiny_trajectory` verified both arms out and back with feedback. Worst tracking error 0.0077 rad; **no tolerance aborts**. See `logs/I18_hardware_day.log.md`. |
 
 ## Robot identity
