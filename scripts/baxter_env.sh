@@ -20,14 +20,17 @@ fi
 # Robot. Address by mDNS hostname (from the robot's serial) — its DHCP lease
 # moves, so a hardcoded IP goes stale. Override BAXTER_HOST to use another.
 export BAXTER_HOST="${BAXTER_HOST:-011412P0024.local}"
-BAXTER_IP="$(getent hosts "${BAXTER_HOST}" 2>/dev/null | awk '{print $1}' | head -1)"
+# `|| true`: with the robot off the network these lookups fail, and without the
+# guard sourcing this script kills any caller running under `set -e` — which is
+# every desk-day run of scripts/test_bridge_loopback.sh.
+BAXTER_IP="$(getent hosts "${BAXTER_HOST}" 2>/dev/null | awk '{print $1}' | head -1 || true)"
 export BAXTER_IP="${BAXTER_IP:-${BAXTER_HOST}}"
 export ROS_MASTER_URI="http://${BAXTER_IP}:11311"
 
 # Laptop IP the ROBOT can call back on. Must be derived from the route to the
 # robot: this host has several interfaces (wifi + a stale static on another
 # subnet), and picking the wrong one leaves the robot unable to reach us.
-export ROS_IP="${ROS_IP:-$(ip route get "${BAXTER_IP}" 2>/dev/null | grep -oP 'src \K\S+')}"
+export ROS_IP="${ROS_IP:-$(ip route get "${BAXTER_IP}" 2>/dev/null | grep -oP 'src \K\S+' || true)}"
 
 # ROS 2 Jazzy + workspace
 source /opt/ros/jazzy/setup.bash 2>/dev/null || true
