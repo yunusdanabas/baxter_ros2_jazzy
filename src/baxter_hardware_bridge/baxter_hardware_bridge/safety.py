@@ -3,7 +3,8 @@
 
 Reads /robot/state (baxter_core_msgs/AssemblyState) and provides
 a gate that rejects motion unless the robot is ready, enabled,
-not stopped, not in error, and not e-stopped.
+not stopped, not in error, not e-stopped, and the topic has
+exactly one publisher.
 
 This module is importable by the action shim and also runnable
 standalone as a CLI status tool.
@@ -30,6 +31,7 @@ class SafetyStateChecker:
 
     def __init__(self, node: Node, topic: str = ROBOT_STATE_TOPIC, callback_group=None):
         self._node = node
+        self._topic = topic
         self._latest: Optional[AssemblyState] = None
         self._stamp_ns: int = 0
 
@@ -55,8 +57,18 @@ class SafetyStateChecker:
         elapsed = (self._node.get_clock().now().nanoseconds - self._stamp_ns) / 1e9
         return elapsed > timeout_sec
 
+    def publisher_count(self) -> int:
+        return self._node.count_publishers(self._topic)
+
     def is_safe_for_motion(self) -> bool:
-        """True only when robot is ready, enabled, not stopped, no error, no e-stop."""
+        """True only when robot is ready, enabled, not stopped, no error, no e-stop,
+        and exactly one node is publishing the state we are reading."""
+        # A mock or an orphaned shim publishing "safe" alongside the real
+        # disabled robot makes this gate accept a goal it must reject (I18 F1,
+        # hit twice in one session). Whose message we got is unknowable, so
+        # refuse while the topic is contested.
+        if self.publisher_count() != 1:
+            return False
         if self.is_stale():
             return False
         s = self._latest
@@ -78,14 +90,20 @@ class SafetyStateChecker:
         return True
 
     def describe(self) -> str:
+        count = self.publisher_count()
+        contested = (
+            ""
+            if count == 1
+            else f" CONTESTED: {count} publishers on {self._topic}, expected 1"
+        )
         s = self._latest
         if s is None:
-            return "NO /robot/state MESSAGE RECEIVED"
+            return f"NO {self._topic} MESSAGE RECEIVED{contested}"
         stale = " (STALE)" if self.is_stale() else ""
         return (
             f"ready={s.ready} enabled={s.enabled} stopped={s.stopped}"
             f" error={s.error} estop_button={s.estop_button}"
-            f" estop_source={s.estop_source}{stale}"
+            f" estop_source={s.estop_source}{stale}{contested}"
         )
 
 

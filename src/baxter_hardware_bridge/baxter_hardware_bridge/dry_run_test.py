@@ -25,6 +25,11 @@ MultiThreadedExecutor used by production main(), then verifies:
       and that abort holds too.
   20. A wrist segment inside the URDF limit but above what the per-cycle
       clamp can deliver is rejected at accept time.
+  21. MoveIt's leading t=0 start-state point is accepted.
+  22. A t=0 point far from the measured pose is still rejected.
+  23. A trajectory that is only a start state is rejected.
+  24. A permuted joint order is remapped by name, not by position.
+  25. A second /robot/state publisher makes the safety gate refuse motion.
 
 Exit code 0 on pass, 1 on fail.
 """
@@ -35,6 +40,7 @@ import time
 from typing import List, Optional, Sequence, Tuple
 
 import rclpy
+from baxter_core_msgs.msg import AssemblyState
 from baxter_hardware_bridge.executor_util import make_shim_executor
 from baxter_hardware_bridge.follow_joint_trajectory_shim import (
     RESULT_ABORTED,
@@ -671,6 +677,52 @@ def run_test() -> bool:
                 else:
                     results.append("PASS: Test 24 permuted joint order honoured")
         time.sleep(0.3)
+
+        # --- Test 25: a second /robot/state publisher blocks motion ---
+        # The mock is the only publisher here, which is the healthy case. Twice
+        # in the I18 session a stale mock or an orphaned shim published a
+        # competing "safe" state while the graph looked fine; the gate must
+        # refuse rather than pick one at random.
+        test_node.get_logger().info("Test 25: second /robot/state publisher")
+        rogue_node = rclpy.create_node("rogue_state_publisher")
+        rogue_node.create_publisher(AssemblyState, "/robot/state", 10)
+        try:
+            deadline = time.monotonic() + 5.0
+            while (
+                shim._safety.publisher_count() < 2 and time.monotonic() < deadline
+            ):
+                time.sleep(0.1)
+            count = shim._safety.publisher_count()
+            if count < 2:
+                results.append(
+                    f"FAIL: Test 25 second publisher never appeared in the graph "
+                    f"(count={count})"
+                )
+            elif shim._safety.is_safe_for_motion():
+                results.append(
+                    f"FAIL: Test 25 still safe_for_motion with {count} publishers "
+                    f"on /robot/state"
+                )
+            else:
+                expect_reject(
+                    test_node,
+                    client,
+                    make_tiny_goal(LEFT_JOINTS),
+                    "Test 25 contested /robot/state",
+                    results,
+                )
+        finally:
+            rogue_node.destroy_node()
+        # Leave the graph as we found it, or anything added after this inherits
+        # a shim that refuses to move.
+        deadline = time.monotonic() + 5.0
+        while shim._safety.publisher_count() != 1 and time.monotonic() < deadline:
+            time.sleep(0.1)
+        if not shim._safety.is_safe_for_motion():
+            results.append(
+                f"FAIL: Test 25 still unsafe after removing the second publisher: "
+                f"{shim._safety.describe()}"
+            )
 
         passed = bool(results) and all(r.startswith("PASS") for r in results)
         for r in results:
