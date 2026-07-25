@@ -40,6 +40,7 @@ JOINT_LIMIT_MARGIN_RAD = 0.05
 FINAL_TOLERANCE_RAD = 0.02
 TRAJECTORY_DURATION_SEC = 3.0
 SETTLE_TIMEOUT_SEC = 2.0
+HOLD_WINDOW_SEC = 1.0
 
 
 def positions_for_joints(joint_state: JointState, joint_names: List[str]) -> List[float]:
@@ -130,17 +131,37 @@ class SimTinyTrajectory(Node):
         return True
 
     def _check_hold(self, joint_names: List[str]) -> None:
-        first = self.wait_for_fresh_joint_state(joint_names)
-        first_positions = positions_for_joints(first, joint_names)
-        deadline = time.monotonic() + 1.0
-        while time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.1)
-        second = self.wait_for_fresh_joint_state(joint_names)
-        second_positions = positions_for_joints(second, joint_names)
-        drift = max(abs(actual - held) for actual, held in zip(second_positions, first_positions))
+        # Judging the first window after cancel measures the settle transient,
+        # not a hold failure: a real arm is still decelerating (~0.02 rad on
+        # hardware) while sim and mock stop dead. Same settle-then-judge shape
+        # as the goal check in send_trajectory — retry the window until the arm
+        # is quiet, and fail only if it never goes quiet.
+        settle_start = time.monotonic()
+        deadline = settle_start + SETTLE_TIMEOUT_SEC
+        while True:
+            first = self.wait_for_fresh_joint_state(joint_names)
+            first_positions = positions_for_joints(first, joint_names)
+            window_end = time.monotonic() + HOLD_WINDOW_SEC
+            while time.monotonic() < window_end:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            second = self.wait_for_fresh_joint_state(joint_names)
+            second_positions = positions_for_joints(second, joint_names)
+            drift = max(
+                abs(actual - held)
+                for actual, held in zip(second_positions, first_positions)
+            )
+            if drift <= FINAL_TOLERANCE_RAD or time.monotonic() >= deadline:
+                break
+        settled_after = time.monotonic() - settle_start
         if drift > FINAL_TOLERANCE_RAD:
-            raise RuntimeError(f"Canceled trajectory did not hold: drift={drift:.4f} rad")
-        self.get_logger().info(f"Cancellation hold verified: max_drift={drift:.4f} rad")
+            raise RuntimeError(
+                f"Canceled trajectory did not hold: drift={drift:.4f} rad after "
+                f"{settled_after:.2f} s of settling"
+            )
+        self.get_logger().info(
+            f"Cancellation hold verified: max_drift={drift:.4f} rad "
+            f"(settled in {settled_after:.2f} s)"
+        )
 
     def send_trajectory(
         self,
