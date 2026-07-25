@@ -48,6 +48,9 @@ TCPROS_SEND_TIMEOUT_SEC = 0.5
 TCPROS_HEADER_TIMEOUT_SEC = 10.0
 ROS2_PUBLISH_QUEUE_SIZE = 200
 ROS2_PUBLISH_TIMER_SEC = 0.01
+# How far the robot's joint_states stamps may sit from this host's clock before
+# we say so. Well inside MoveIt's own tolerance, but past anything routine.
+CLOCK_SKEW_WARN_SEC = 0.5
 
 # Real ROS 1 md5sum + message definition per type we publish. rosbag stores the
 # publisher's connection header and nothing else, so advertising md5sum "*" with
@@ -725,7 +728,7 @@ class BaxterPyBridge(Node):
                 "sensor_msgs/JointState",
                 "/py_bridge_js",
                 self.slave,
-                self._enqueue_joint_states,
+                lambda msg: self._enqueue_ros2(self.js_pub, msg),
                 deser_joint_state,
                 log_fn=log_fn,
             )
@@ -753,10 +756,6 @@ class BaxterPyBridge(Node):
                     throttle_duration_sec=5.0,
                 )
 
-    def _enqueue_joint_states(self, msg: JointState) -> None:
-        # Stamp on the ROS 2 executor thread in _flush_ros2_queue.
-        self._enqueue_ros2(self.js_pub, msg)
-
     def _flush_ros2_queue(self) -> None:
         while True:
             try:
@@ -764,8 +763,34 @@ class BaxterPyBridge(Node):
             except queue.Empty:
                 break
             if publisher is self.js_pub and isinstance(msg, JointState):
-                msg.header.stamp = self.get_clock().now().to_msg()
+                self._keep_robot_stamp(msg)
             publisher.publish(msg)
+
+    def _keep_robot_stamp(self, msg: JointState) -> None:
+        """Publish the robot's own sample time, not bridge receive time.
+
+        Overwriting it destroyed the only sample-time reference the recordings
+        had and made cross-bag latency work impossible (F14). Nothing downstream
+        needs it to be "now": the action shim measures staleness from its own
+        receive time, not from this stamp.
+        """
+        stamp_ns = msg.header.stamp.sec * 10**9 + msg.header.stamp.nanosec
+        if stamp_ns == 0:
+            # A ROS 1 peer that never stamped. Receive time is still better
+            # than 1970 for anything time-ordered downstream.
+            msg.header.stamp = self.get_clock().now().to_msg()
+            return
+        # The robot's clock and this host's are independent. If they drift,
+        # MoveIt quietly discards the state as out of date and TF lookups fail,
+        # which is expensive to diagnose with the robot in front of you.
+        skew_sec = (self.get_clock().now().nanoseconds - stamp_ns) / 1e9
+        if abs(skew_sec) > CLOCK_SKEW_WARN_SEC:
+            self.get_logger().warn(
+                f"/robot/joint_states stamps are {skew_sec:+.2f}s from this "
+                f"host's clock; MoveIt will treat them as stale. Check that the "
+                f"robot and this host agree on the time (NTP).",
+                throttle_duration_sec=30.0,
+            )
 
     def _ros2_to_ros1(self, topic: str, msg):
         pub = self.ros1_pubs.get(topic)
