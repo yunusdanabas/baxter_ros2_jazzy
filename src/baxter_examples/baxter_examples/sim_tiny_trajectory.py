@@ -54,15 +54,17 @@ def positions_for_joints(joint_state: JointState, joint_names: List[str]) -> Lis
     return positions
 
 
-def choose_reversible_target(start: float) -> float:
+def choose_reversible_target(start: float, delta: float = JOINT_DELTA_RAD) -> float:
     lower, upper = JOINT_LIMIT
     if not lower <= start <= upper:
         raise RuntimeError(f"s1 start {start:.3f} rad is outside [{lower}, {upper}]")
-    if start + JOINT_DELTA_RAD <= upper - JOINT_LIMIT_MARGIN_RAD:
-        return start + JOINT_DELTA_RAD
-    if start - JOINT_DELTA_RAD >= lower + JOINT_LIMIT_MARGIN_RAD:
-        return start - JOINT_DELTA_RAD
-    raise RuntimeError(f"No safe reversible s1 target from {start:.3f} rad")
+    if start + delta <= upper - JOINT_LIMIT_MARGIN_RAD:
+        return start + delta
+    if start - delta >= lower + JOINT_LIMIT_MARGIN_RAD:
+        return start - delta
+    raise RuntimeError(
+        f"No safe reversible s1 target {delta:.3f} rad from {start:.3f} rad"
+    )
 
 
 class SimTinyTrajectory(Node):
@@ -79,7 +81,14 @@ class SimTinyTrajectory(Node):
             "right_action", "/right_arm_controller/follow_joint_trajectory"
         )
         self.declare_parameter("joint_states_topic", "/joint_states")
+        # Distance and duration were hardcoded, so every run was gentle motion
+        # and no tolerance number said anything about speed. Raise offset or
+        # drop duration to walk the move toward the shim's 2.0 rad/s clamp.
+        self.declare_parameter("duration", TRAJECTORY_DURATION_SEC)
+        self.declare_parameter("offset", JOINT_DELTA_RAD)
         self._cancel_after_sec = self.get_parameter("cancel_after_sec").value
+        self._duration = float(self.get_parameter("duration").value)
+        self._offset = float(self.get_parameter("offset").value)
         self.left_action = self.get_parameter("left_action").value
         self.right_action = self.get_parameter("right_action").value
         joint_states_topic = self.get_parameter("joint_states_topic").value
@@ -176,10 +185,14 @@ class SimTinyTrajectory(Node):
             raise RuntimeError(f"Action server not available: {action_name}")
 
         motion_joint = joint_names[MOTION_JOINT_INDEX]
+        travel = abs(
+            target_positions[MOTION_JOINT_INDEX] - start_positions[MOTION_JOINT_INDEX]
+        )
         self.get_logger().info(
             f"{action_name} {label}: {motion_joint} "
             f"{start_positions[MOTION_JOINT_INDEX]:.3f} -> "
-            f"{target_positions[MOTION_JOINT_INDEX]:.3f} rad"
+            f"{target_positions[MOTION_JOINT_INDEX]:.3f} rad "
+            f"in {self._duration:.2f} s ({travel / self._duration:.2f} rad/s)"
         )
 
         goal = FollowJointTrajectory.Goal()
@@ -189,9 +202,9 @@ class SimTinyTrajectory(Node):
         # now rejects one — it would otherwise be commanded in a single step.
         end_point = JointTrajectoryPoint()
         end_point.positions = target_positions
-        end_point.time_from_start.sec = int(TRAJECTORY_DURATION_SEC)
+        end_point.time_from_start.sec = int(self._duration)
         end_point.time_from_start.nanosec = int(
-            (TRAJECTORY_DURATION_SEC - int(TRAJECTORY_DURATION_SEC)) * 1e9
+            (self._duration - int(self._duration)) * 1e9
         )
         goal.trajectory.points = [end_point]
 
@@ -281,7 +294,7 @@ class SimTinyTrajectory(Node):
         start_positions = positions_for_joints(start_state, joint_names)
         target_positions = start_positions.copy()
         target_positions[MOTION_JOINT_INDEX] = choose_reversible_target(
-            start_positions[MOTION_JOINT_INDEX]
+            start_positions[MOTION_JOINT_INDEX], self._offset
         )
         if not self.send_trajectory(
             action_name, joint_names, start_positions, target_positions, "outbound"
