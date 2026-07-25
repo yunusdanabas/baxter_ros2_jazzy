@@ -13,17 +13,17 @@ Usage (from the repo root):
     -v "$PWD/scripts/analyze_tracking_lag.py:/tmp/a.py:ro" baxter-noetic:n07 \
     bash -lc "source /root/baxter_ws/install/setup.bash && python3 /tmp/a.py /data/<bag>"
 
-It reads |ref_joint_states - joint_states| rather than the joint_command payload,
-because the I12 bag was recorded while the bridge advertised md5sum "*" with an
-empty message definition, so *that* bag's joint_command messages cannot be
-deserialised (logs/I18_hardware_day.log.md F23). Their timestamps still delimit
-goal windows, which is all this needs them for.
+It measures |command - measured| when the bag carries a decodable joint_command
+payload, and falls back to |ref_joint_states - measured| when it does not. The
+command is the quantity path_tolerance_rad actually governs; ref_joint_states is
+the robot's own internal target, which may itself lag what we sent.
 
-F23 is fixed: py_bridge now sends the real md5sum and message definition, and a
-bag recorded through it decodes (verified against rosbag in the Noetic image).
-Any capture from here on can be measured as |command - measured| directly --
-that rewrite is waiting on a fresh capture, since re-running it against the old
-bag would still hit the empty schema.
+The fallback exists for bags recorded before F23 (logs/I18_hardware_day.log.md),
+when the bridge advertised md5sum "*" with an empty message definition and rosbag
+stored our commands as opaque bytes -- the I12 capture is one of those, and no
+rewrite makes it decodable. Their timestamps still delimit the goal windows.
+py_bridge has sent real metadata since 2026-07-25, so any capture from here on
+takes the direct path; the header line says which one was used.
 """
 from __future__ import print_function
 import sys
@@ -59,7 +59,15 @@ with rosbag.Bag(BAG) as bag:
         ts = t.to_sec()
         if topic.endswith("joint_command"):
             arm = topic.split("/")[3]
-            cmds[arm].append((ts, None))
+            try:
+                payload = dict(zip(msg.names, msg.command))
+            except Exception:
+                # Recorded before F23: md5sum "*" and an empty message
+                # definition, so the payload is opaque bytes. The timestamp
+                # still delimits the goal window, which is what this falls
+                # back to.
+                payload = None
+            cmds[arm].append((ts, payload))
         elif topic == "/robot/joint_states":
             meas.append((ts, dict(zip(msg.name, msg.position))))
         else:
@@ -67,7 +75,8 @@ with rosbag.Bag(BAG) as bag:
 
 print("=== command stream ===")
 for a in ARMS:
-    print("  %-5s %6d joint_command msgs" % (a, len(cmds[a])))
+    decoded = sum(1 for _, pos in cmds[a] if pos)
+    print("  %-5s %6d joint_command msgs, %d decoded" % (a, len(cmds[a]), decoded))
 print("  %6d joint_states, %6d ref_joint_states" % (len(meas), len(refs)))
 print()
 
@@ -87,15 +96,28 @@ for arm in ARMS:
         prev = ts
     windows.append((start, prev))
 
+    # Measure against what we actually commanded when the bag carries it, and
+    # fall back to the robot's own reference for bags recorded before F23. The
+    # command is the quantity path_tolerance_rad governs; ref_joint_states is
+    # the robot's internal target, which may itself lag our command.
+    commanded = [(ts, pos) for ts, pos in stream if pos]
+    if commanded:
+        series, source = commanded, "command"
+    elif refs:
+        series, source = refs, "ref_joint_states"
+    else:
+        print("=== %s arm: no command payloads and no ref_joint_states ===" % arm)
+        continue
+
     per_joint_max = {j: 0.0 for j in JOINTS}
     all_lags = []
     ri = 0
     for ts, mpos in meas:
         if not any(w0 <= ts <= w1 for w0, w1 in windows):
             continue                      # only while a goal is executing
-        while ri + 1 < len(refs) and refs[ri + 1][0] <= ts:
+        while ri + 1 < len(series) and series[ri + 1][0] <= ts:
             ri += 1
-        cpos = refs[ri][1]
+        cpos = series[ri][1]
         for j in JOINTS:
             key = "%s_%s" % (arm, j)
             if key in cpos and key in mpos:
@@ -105,7 +127,7 @@ for arm in ARMS:
                     per_joint_max[j] = lag
 
     all_lags.sort()
-    print("=== %s arm: in-flight lag |ref_joint_states - measured| ===" % arm)
+    print("=== %s arm: in-flight lag |%s - measured| ===" % (arm, source))
     print("  goal windows: %d, total %.1f s, %d samples"
           % (len(windows), sum(b - a for a, b in windows), len(all_lags)))
     if all_lags:
