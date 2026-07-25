@@ -11,11 +11,12 @@ This repo is sim-first. Keep changes inside the profile they actually affect.
 | `sim_moveit` | passed, manual/local smoke |
 | `sim_moveit_rviz` | passed, manual/local GUI |
 | default CI/devcontainer | passed, hardware-free |
-| `hardware_bridge` | blocked |
-| supervised hardware motion | blocked |
+| `hardware_bridge` | passed, supervised (2026-07-22) |
+| supervised hardware motion | passed, supervised (2026-07-24, both arms) |
+| MoveIt on hardware | passed, supervised (2026-07-24) |
 | Zenoh/compatibility fallback | deferred |
 
-Do not claim hardware support from sim evidence. Hardware bridge and motion claims require I10-I12 gate logs.
+Do not claim hardware support from sim evidence, and do not widen a hardware claim past the session that earned it. The gates passed on one BR-01 at low speed; fast motion, sustained duty, grippers and a second robot are all unmeasured.
 
 ## Default Checks
 
@@ -47,7 +48,7 @@ Do not copy or import code/config from unlicensed repositories.
 
 ## Hardware Safety Review
 
-Hardware I10–I12 gates remain blocked. The prep package `baxter_hardware_bridge` and `docs/hardware_runbook.md` already exist for lab prep; do not expand them into a support claim, and do not add grippers, compatibility layers, or Zenoh fallback under the sim-first release scope.
+The I10–I12 hardware gates have passed under supervision on a single BR-01. Any change to `baxter_hardware_bridge`, `scripts/py_bridge.py` or the shim safety path can move a real robot, so it needs the hardware-free evidence first: `ros2 run baxter_hardware_bridge dry_run_test` (25 cases) and, for bridge changes, `bash scripts/test_bridge_loopback.sh`. Do not add grippers, compatibility layers, or Zenoh fallback under the current release scope.
 
 Beginner and release docs must not teach raw safety-topic publishing. The hardware runbook may document Baxter-side enable/tuck commands for supervised lab use only.
 

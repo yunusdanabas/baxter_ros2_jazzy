@@ -9,7 +9,7 @@
 - [ ] default CI/devcontainer
 - [ ] docs only
 - [ ] pin/source metadata
-- [ ] hardware bridge or safety scope, blocked unless a gate says otherwise
+- [ ] hardware bridge or safety scope — can move a real robot
 
 ## Checks
 
@@ -28,8 +28,9 @@
 
 ## Safety Boundary
 
-- [ ] This PR does not claim hardware support without I10-I12 evidence
-- [ ] This PR does not claim hardware support or expand prep-only bridge tooling into a support claim; grippers, Zenoh fallback, and hardware examples stay out of the default sim path unless new gates and logs exist
+- [ ] This PR does not widen a hardware claim past the session that earned it (one BR-01, low speed, supervised)
+- [ ] If it touches the shim, the safety gate or `py_bridge.py`: `ros2 run baxter_hardware_bridge dry_run_test` passes 25/25, and `bash scripts/test_bridge_loopback.sh` passes for bridge changes
+- [ ] Grippers, Zenoh fallback, and hardware examples stay out of the default sim path unless new gates and logs exist
 - [ ] Beginner and release docs do not teach raw safety-topic publishing or hardware enable commands
 
 ## Notes

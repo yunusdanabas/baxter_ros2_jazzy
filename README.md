@@ -11,13 +11,16 @@ ROS 2 Jazzy workspace for Baxter simulation first: Gazebo Harmonic, `ros2_contro
 | MoveIt sim | passed, manual/local smoke | `docs/moveit_guide.md` |
 | Gazebo + MoveIt RViz | manual/local GUI | `docs/moveit_guide.md` |
 | Default CI/devcontainer | passed, hardware-free | `docs/ci_release_checklist.md` |
-| Hardware bridge | blocked | Prep exists (`baxter_hardware_bridge`, `docs/hardware_runbook.md`); I10 gate not run — unsupported |
-| Supervised hardware motion | blocked | I12 is not started; no support claim |
+| Hardware bridge | passed, supervised | 2026-07-22 on BR-01 `011412P0024`; `docs/hardware_runbook.md` |
+| Supervised hardware motion | passed, supervised | 2026-07-24, both arms, one session on one robot; `docs/hardware_runbook.md` |
+| MoveIt on hardware | passed, supervised | 2026-07-24, single session; `docs/moveit_guide.md` |
 | Zenoh/compatibility fallbacks | deferred | Not in the default path |
 
 ## Current Status
 
-The supported default path is hardware-free simulation through a measured, reversible `sim_tiny_trajectory`. Both RViz profiles work: the plain RobotModel/TF one and the MoveIt MotionPlanning one, the latter with interactive-marker IK on each gripper. Hardware remains blocked.
+The default path is hardware-free simulation through a measured, reversible `sim_tiny_trajectory`. Both RViz profiles work: the plain RobotModel/TF one and the MoveIt MotionPlanning one, the latter with interactive-marker IK on each gripper.
+
+The hardware path also works, under supervision. On 2026-07-24 a real Baxter (BR-01 `011412P0024`) executed tiny trajectories on both arms through the ROS 2 command path, and MoveIt planned and executed on it. That is one supervised session on one robot at low speed — read `docs/hardware_runbook.md` before going near it, and treat the tolerance figures as characterising gentle motion only.
 
 Implemented local packages:
 
@@ -27,7 +30,7 @@ Implemented local packages:
 | `baxter_gz_sim` | Gazebo Harmonic, fixed pedestal mount, 17-joint state, two arm controllers, plain RViz profile. |
 | `baxter_examples` | Reversible direct and MoveIt motion/cancellation checks. |
 | `baxter_moveit_config` | Readiness-gated MoveIt 2, IK/pose clients, and a MotionPlanning RViz profile. |
-| `baxter_hardware_bridge` | Prep-only action shims and dry-run; unsupported until the I10 gate. |
+| `baxter_hardware_bridge` | FollowJointTrajectory action shims, safety gate, mock robot, and a 25-case dry-run self-test. Proven on hardware under supervision. |
 
 Imported dependency:
 
@@ -78,15 +81,15 @@ Expected result: both arms reach a bounded target within `0.02 rad` and return t
 
 ## Devcontainer And CI
 
-The default devcontainer and GitHub Actions workflow install only the sim/MoveIt dependencies. They do not install ROS 1, robot-network tooling, or Zenoh. The local `baxter_hardware_bridge` package builds in the default `colcon` path (hardware-free dry-run only); real Baxter access remains blocked.
+The default devcontainer and GitHub Actions workflow install only the sim/MoveIt dependencies. They do not install ROS 1, robot-network tooling, or Zenoh. The local `baxter_hardware_bridge` package builds in the default `colcon` path and CI runs its dry-run suite; talking to a real Baxter needs the robot network and the ROS 1 side, which CI deliberately does not have.
 
 CI checks the pinned SHA, runs `rosdep install`, builds with `colcon build --base-paths src --symlink-install --packages-skip baxter_bridge`, compiles/imports local Python files, loads the Gazebo Xacro/URDF, and statically checks MoveIt config.
 
 ## Support Boundary
 
-No hardware support is claimed yet. `baxter_bridge` is bridge-host-only and is intentionally skipped in default sim/devcontainer/CI builds because it links ROS 1 libraries unavailable on clean Ubuntu 24.04/Jazzy machines.
+Hardware support is claimed only as far as the gates go: one supervised session, one BR-01, low-speed motion on both arms, 2026-07-24. Nothing here characterises fast motion, sustained duty, grippers, or a second robot. `baxter_bridge` is bridge-host-only and is intentionally skipped in default sim/devcontainer/CI builds because it links ROS 1 libraries unavailable on clean Ubuntu 24.04/Jazzy machines.
 
-Do not use this repo to move real hardware until I10-I12 gates pass under supervision. Beginner docs intentionally do not include raw safety-topic publishing or hardware enable commands.
+Never move a real Baxter with this unsupervised or without the e-stop in hand; follow `docs/hardware_runbook.md`. Beginner docs intentionally do not include raw safety-topic publishing or hardware enable commands.
 
 Local project code is BSD-3-Clause. Imported sources keep their upstream licenses; see `docs/licensing_and_sources.md`.
 

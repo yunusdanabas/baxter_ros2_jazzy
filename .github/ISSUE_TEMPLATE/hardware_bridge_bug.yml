@@ -1,11 +1,12 @@
 name: Hardware bridge bug
-description: Blocked bridge-host investigation. This is not a hardware support claim.
+description: Bridge-host investigation. Supervised lab use only.
 title: "[hardware-bridge] "
-labels: [hardware_bridge, bug, blocked]
+labels: [hardware_bridge, bug]
 body:
   - type: markdown
     attributes:
-      value: Hardware bridge support is blocked until I10 passes. Do not use this form to claim supervised motion support.
+      value: |
+        The bridge and motion gates passed under supervision on a single BR-01 (2026-07-22 and 2026-07-24), at low speed. If your report involves unintended or unexpected robot motion, use the `Safety concern` form instead of this one.
   - type: input
     id: bridge_os
     attributes:

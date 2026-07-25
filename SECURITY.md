@@ -12,8 +12,8 @@ For safety-sensitive or security-sensitive reports, use GitHub private vulnerabi
 |---|---:|
 | Sim-only bugs | Public issue is fine. |
 | Docs ambiguity that could affect hardware safety | Use `Safety concern` if urgent. |
-| Hardware bridge behavior | Blocked until I10; report as hardware bridge bug, not supported hardware. |
-| Supervised hardware motion | Blocked until I12; no support claim. |
+| Hardware bridge behavior | Gate passed 2026-07-22 on one robot; report as hardware bridge bug. |
+| Supervised hardware motion | Gate passed 2026-07-24 on one robot, supervised and low speed. Anything that could cause unintended motion is a `Safety concern`, not a normal bug. |
 
 Beginner and release docs must not teach raw safety-topic publishing or hardware enable commands.
 
