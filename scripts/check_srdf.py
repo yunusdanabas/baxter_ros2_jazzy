@@ -57,6 +57,17 @@ POSES = {
     ],
 }
 
+# Negative control. Without this a matrix that disabled *everything* would pass
+# the checks above, which is the failure mode a regenerated collision matrix
+# actually has. This pose folds the left forearm back onto its own upper arm:
+# 5 cm of interpenetration across 13 contacts, nothing subtle about it.
+MUST_COLLIDE = {
+    "left forearm folded onto upper arm": [
+        0.0, 0.0, 0.0, 2.6, 0.0, 0.0, 0.0,
+        0.0, -0.55, 0.0, 0.75, 0.0, 1.26, 0.0,
+    ],
+}
+
 PAIR_RE = re.compile(r'disable_collisions\s+link1="([^"]+)"\s+link2="([^"]+)"')
 
 
@@ -106,7 +117,8 @@ def poses() -> bool:
             print("FAIL: /check_state_validity not available — is move_group up?")
             return False
 
-        for label, positions in POSES.items():
+        for label, positions in list(POSES.items()) + list(MUST_COLLIDE.items()):
+            must_collide = label in MUST_COLLIDE
             state = RobotState()
             # Only joints move_group's model knows. Sending one it does not --
             # head_nod, say -- throws an uncaught moveit::Exception and kills
@@ -121,6 +133,20 @@ def poses() -> bool:
             if result is None:
                 print(f"FAIL: {label}: no response from /check_state_validity")
                 ok = False
+                continue
+            if must_collide:
+                if result.valid:
+                    ok = False
+                    print(
+                        f"FAIL: {label} reports collision-free — the matrix "
+                        f"disables a pair it must check"
+                    )
+                else:
+                    worst = max(c.depth for c in result.contacts) if result.contacts else 0.0
+                    print(
+                        f"PASS: {label} correctly reports a collision "
+                        f"(worst depth {worst:.5f})"
+                    )
                 continue
             if result.valid:
                 print(f"PASS: {label} is collision-free")
