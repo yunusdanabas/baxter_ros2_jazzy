@@ -32,12 +32,19 @@ MoveIt and shutdown all already run without a container.
 | `rosbag record` (`record_ros1.sh`) | ROS 1-side topics the bridge does not carry | **Partly** — the important one is trivial |
 | `roscore` + `rostopic` (`test_bridge_loopback.sh`) | desk-only protocol test | Not worth replacing; it is a desk test, irrelevant during a session |
 
-## The key enabler: md5sums are wildcarded
+## The key enabler: md5sums are wildcarded on the subscribe side
 
-`py_bridge.py` negotiates TCPROS with `"md5sum": "*"` (`py_bridge.py:408,529`),
-so publishing or subscribing to a **new message type needs no md5 table and no
-message definition** — only correct payload bytes. This is what makes the
-replacements below small.
+`ROS1Subscriber` negotiates TCPROS with `"md5sum": "*"`, so **receiving** a new
+message type needs no md5 table and no message definition — only correct payload
+bytes. This is what makes the replacements below small.
+
+Publishing is no longer symmetric. Since 2026-07-25 `ROS1Publisher` answers the
+handshake with the real md5sum and message definition from `ROS1_MSG_META`,
+because `rosbag` stores whatever the publisher advertised and a wildcard made our
+own recordings undecodable. Unlisted types still fall back to the wildcard and
+still work on the wire — but **a new published type needs an `ROS1_MSG_META`
+entry if its recordings must decode**. Both values come straight from
+`rosmsg md5` and `rosmsg show -r` in the Noetic image.
 
 ## 1. Enable control — `scripts/enable_ctl.py`
 

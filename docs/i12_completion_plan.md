@@ -1,8 +1,12 @@
 # I12 Completion Plan — hardening, checking, robot day
 
 Working plan for finishing I12 (supervised hardware motion). Written 2026-07-23.
-Retire this file once the I12 gate passes and its findings are folded into
-`logs/` and `MASTER_PLAN.md`.
+
+> **Historical as of 2026-07-24 — the I12 gate passed.** Every phase below,
+> including the robot day, has been executed. This file is kept as the record of
+> what was decided and why; for what happened see `logs/I18_hardware_day.log.md`,
+> and for current hardware procedure see `docs/hardware_runbook.md` and
+> `docs/hardware_day_plan.md`.
 
 ## Context
 
@@ -10,8 +14,8 @@ I12 was blocked on two independent items. The command-path hardening (F1–F4,
 F10 from `logs/I12_prep_command_path_audit.log.md`) is **done** as of
 2026-07-23: goals are validated at accept time, every command is clamped to
 `max_step_rad_per_cycle`, cancel holds for a real duration, and feedback is
-verified end to end. `dry_run_test` covers it with 16 cases and CI already runs
-it (`.github/workflows/ci.yml:92`). I17 took that to 20.
+verified end to end. `dry_run_test` covered it with 16 cases and CI already runs
+it (`.github/workflows/ci.yml:92`). I17 took that to 20, and I19 to 25.
 
 What remains is one blocker that needs the robot (enable-from-tucked), plus a
 short list of gaps found by comparing our shim against the legacy ROS 1
@@ -24,11 +28,11 @@ disabled** (`-1.0`, and the code skips the check when it is not positive). Our
 shim has none of the three. So the one they relied on in practice — path
 tolerance — is the one we should add.
 
-> **Phases A and B are done** (I17, 2026-07-23, no hardware). `dry_run_test` is
-> 20/20 and the closed-loop rehearsal passes for both arms plus cancel-hold. The
+> **Phases A and B are done** (I17, 2026-07-23, no hardware). `dry_run_test` was
+> 20/20 and the closed-loop rehearsal passed for both arms plus cancel-hold. The
 > sections below are kept as the record of what was decided and why; the
 > as-built result is in `logs/I17_pre_hardware_hardening.log.md`. **Phase C, the
-> robot day, is what remains.**
+> robot day, ran on 2026-07-24 and passed.**
 
 ## Phase A — desk work, before the robot day  ✅ done
 
@@ -182,16 +186,19 @@ session:
 5. §7b cancel-and-hold.
 6. §8 shutdown: tuck, disable, stop shims then bridge.
 
-### Values to confirm on hardware
+### Values to confirm on hardware — **confirmed 2026-07-24**
 
-These are desk-tuned guesses that a real series-elastic arm can invalidate:
+These were desk-tuned guesses. What the real arm said:
 
-| Parameter | Default | Risk if wrong |
+| Parameter | Default | Measured |
 |---|---|---|
-| `path_tolerance_rad` | 0.2 | Too tight false-aborts mid-trajectory; a real joint lags in a way the mock never does |
-| `stopped_velocity_tolerance` | 0.25 | Too tight fails a goal the arm actually completed, if the arm settles slowly |
-| `hold_duration_sec` | 1.0 | Too short and the arm floats after cancel |
-| `max_step_rad_per_cycle` | 0.02 | Should never bind on the I12 move (~0.0012 rad/cycle); a clamp warning means something upstream is wrong |
+| `path_tolerance_rad` | 0.2 | Never tripped. Worst *in-flight* lag 0.0352 rad — a 5.7× margin. Keep 0.2; 0.15 is the floor, and only with fast-motion data |
+| `stopped_velocity_tolerance` | 0.25 | Never fired; every goal settled in ≤0.01 s |
+| `hold_duration_sec` | 1.0 | Cancel held correctly — 0.0004 rad drift over 6 s. The arm does not float: gravity compensation holds this pose to 0.001 rad even with no command at all |
+| `max_step_rad_per_cycle` | 0.02 | Did not bind, as expected. It *is* the real speed limit though — 2.0 rad/s — and it rejects wrist segments the URDF would allow at 4.0 |
+
+The caveat that outlived them: every figure above came from motion at
+0.117 rad/s. Nothing here says what happens near the clamp.
 
 ### Watch for
 
@@ -216,10 +223,11 @@ symptom. This is the only audit finding that can be settled only on hardware.
 
 ## Definition of done
 
-- ~~`dry_run_test` passes with the Phase A cases added, and CI is green.~~ 20/20.
+- ~~`dry_run_test` passes with the Phase A cases added, and CI is green.~~ 20/20 at the time; 25/25 as of 2026-07-25.
 - ~~The closed-loop mock rehearsal passes for both arms, with feedback and a
   verified cancellation hold.~~ Done, `mock_mode:=false`.
 - ~~Docs, logs, `MASTER_PLAN.md` and `CHANGELOG.md` agree with each other.~~ Done.
-- The I12 gate passes on hardware: tiny trajectory, feedback, result, and
-  cancel/hold for each advertised arm — with evidence in
+- ~~The I12 gate passes on hardware: tiny trajectory, feedback, result, and
+  cancel/hold for each advertised arm.~~ **Done 2026-07-24**, both arms, evidence
+  in `logs/I18_hardware_day.log.md` and a Resolution section appended to
   `logs/I12_supervised_hardware_motion.log.md`.

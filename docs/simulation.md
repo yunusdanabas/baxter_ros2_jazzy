@@ -91,6 +91,12 @@ ros2 run baxter_examples sim_tiny_trajectory --ros-args -p use_sim_time:=true
 
 The command takes a fresh state for each arm, performs a visible limit-safe move, verifies final error at `0.02 rad` or less, and returns to the measured start position. Action success without the fresh final-state check is a failure.
 
+`duration` (default 3.0 s) and `offset` (default 0.35 rad) set how far and how
+fast the move is; the per-move log line reports the resulting rad/s. Shortening
+`duration` is the way to make motion faster — on hardware, `speed_ratio` was
+measured to have no effect, because the client's own interpolation is the binding
+constraint.
+
 Cancellation check:
 
 ```bash

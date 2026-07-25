@@ -161,9 +161,11 @@ Measured directly on the ROS 1 side (`rostopic hz`, 2026-07-24):
   all 14 arm joints, a 17-joint message) and `/end_effector_publisher` (~38 Hz,
   gripper joints). A native stack subscribing normally through rospy gets both
   merged; anything hand-rolling TCPROS must connect to **every** publisher the
-  master lists, or it silently receives only one (this is exactly what
-  `py_bridge.py` does today — it sees 100 Hz of the 138 Hz stream and never
-  receives gripper joint states).
+  master lists, or it silently receives only one. `py_bridge.py` did exactly that
+  until 2026-07-24 — it saw 100 Hz of the 138 Hz stream and never received
+  gripper joint states, which also left MoveIt's planning scene permanently
+  incomplete (`Missing l_gripper_l_finger_joint`). Fixed by keeping one receive
+  thread per publisher: 19 joints at 123.6 Hz, up from 17 at 99.7 Hz.
 - 89 services are advertised, including
   `/ExternalTools/<side>/PositionKinematicsNode/IKService` and the
   `/cameras/{list,open,close,reset}` set.
