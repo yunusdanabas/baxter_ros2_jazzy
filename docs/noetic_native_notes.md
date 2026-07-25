@@ -167,9 +167,11 @@ Measured directly on the ROS 1 side (`rostopic hz`, 2026-07-24):
 - 89 services are advertised, including
   `/ExternalTools/<side>/PositionKinematicsNode/IKService` and the
   `/cameras/{list,open,close,reset}` set.
-- Tracking on a real arm is **much better than the Rethink defaults assume**:
-  worst error 0.0043–0.0077 rad across four `s1` moves of 0.35 rad over 3 s at
-  `speed_ratio` 0.1, i.e. a 26× margin under a 0.2 rad path tolerance.
+- Tracking on a real arm is good, but mind which number you use: **settled**
+  error at goal end is 0.0043–0.0077 rad, while worst **in-flight** lag (what a
+  path tolerance actually governs) is 0.0352 rad — 4.5× larger. Against 0.2 rad
+  that is a 5.7× margin, reasonable rather than lavish. See the "Tolerances"
+  section below and `logs/I18_hardware_day.log.md` F22.
 - After a cancel mid-trajectory the arm settles into the hold setpoint over
   roughly 0.02 rad, then holds to within 0.0015 rad peak-to-peak. Budget a
   settle window before judging a hold; do not compare two adjacent samples.
