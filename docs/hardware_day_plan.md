@@ -138,21 +138,30 @@ as of 2026-07-25 (sheet §7).
 Escalate **one step at a time**, checking the arm between runs and keeping the
 scoped recorder on:
 
-| Step | `offset` | `duration` | rad/s |
-|---|---|---|---|
-| 1 | 0.35 | 3.0 | 0.12 (today's baseline) |
-| 2 | 0.35 | 1.5 | 0.23 |
-| 3 | 0.50 | 1.0 | 0.50 |
-| 4 | 0.50 | 0.5 | 1.00 |
-| 5 | 0.50 | 0.35 | 1.43 — approaching the 2.0 clamp |
+| Step | `offset` | `duration` | rad/s | measured max lag |
+|---|---|---|---|---|
+| 1 | 0.35 | 3.0 | 0.12 | 0.037 rad |
+| 2 | 0.35 | 1.5 | 0.23 | 0.094 rad |
+| 3 | 0.50 | 1.0 | 0.50 | **0.198 rad → ABORT** |
+| 4 | 0.50 | 0.5 | 1.00 | not reached |
+| 5 | 0.50 | 0.35 | 1.43 | not reached |
 
-The per-move log line reports the rad/s actually requested. A goal above the clamp
-is rejected at accept time (`needs X rad/s, limit is Y (max_step_rad_per_cycle)`) —
-that is the shim working, not a failure.
+**Run 2026-07-25, and it stopped at step 3** with
+`Path tolerance violated: left_s1 lags its setpoint by 0.202 rad (limit 0.200)`.
+The arm then held to 0.0004 rad over 6 s — the abort-and-hold path works.
+
+The result is a straight line: **lag ≈ 0.4 s × commanded velocity.** The arm runs
+a constant time behind its setpoint, so `path_tolerance_rad` is a speed limit in
+disguise: 0.2 rad ÷ 0.4 s ≈ 0.5 rad/s. The 2.0 rad/s per-cycle clamp is
+unreachable — the tolerance binds four times sooner.
+
+Re-run these steps only if something changes that should move that line (control
+rate, speed_ratio semantics, a stiffer hold). Otherwise the curve is known, and
+the useful experiment is at the *other* end: what does raising
+`path_tolerance_rad` to 0.4 buy, and is the tracking still safe there?
 
 **Stop escalating** on the first path-tolerance abort, visible stutter, or audible
-change in the arm. Record the step that did it; that number is the deliverable.
-**Abort to e-stop** on anything unexpected.
+change in the arm. **Abort to e-stop** on anything unexpected.
 
 ## P5 — Tolerance characterisation (~45 min)
 

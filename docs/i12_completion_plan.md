@@ -192,13 +192,16 @@ These were desk-tuned guesses. What the real arm said:
 
 | Parameter | Default | Measured |
 |---|---|---|
-| `path_tolerance_rad` | 0.2 | Never tripped. Worst *in-flight* lag 0.0352 rad — a 5.7× margin. Keep 0.2; 0.15 is the floor, and only with fast-motion data |
+| `path_tolerance_rad` | 0.2 | Never tripped at 0.12 rad/s (lag 0.0369). At 0.50 rad/s it aborts: lag ≈ 0.4 s × velocity, so 0.2 rad *is* a ~0.5 rad/s speed limit (measured 2026-07-25) |
 | `stopped_velocity_tolerance` | 0.25 | Never fired; every goal settled in ≤0.01 s |
 | `hold_duration_sec` | 1.0 | Cancel held correctly — 0.0004 rad drift over 6 s. The arm does not float: gravity compensation holds this pose to 0.001 rad even with no command at all |
 | `max_step_rad_per_cycle` | 0.02 | Did not bind, as expected. It *is* the real speed limit though — 2.0 rad/s — and it rejects wrist segments the URDF would allow at 4.0 |
 
-The caveat that outlived them: every figure above came from motion at
-0.117 rad/s. Nothing here says what happens near the clamp.
+The caveat that outlived them was resolved on 2026-07-25: the figures above came
+from motion at 0.117 rad/s, and stepping the speed up showed lag scales linearly
+with velocity (0.037 rad at 0.12 rad/s, 0.094 at 0.23, 0.198 at 0.50). The
+per-cycle clamp at 2.0 rad/s is therefore unreachable — `path_tolerance_rad`
+binds four times sooner.
 
 ### Watch for
 
