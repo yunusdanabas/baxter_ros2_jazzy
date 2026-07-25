@@ -21,7 +21,7 @@ Then run:
 | Check | Current status |
 |---|---:|
 | Python compile/import for local launch/example/hardware-bridge files | passed |
-| Hardware-free `baxter_hardware_bridge` dry_run_test | passed |
+| Hardware-free `baxter_hardware_bridge` dry_run_test | passed, 25/25 |
 | Xacro expansion of `baxter_gz_control.urdf.xacro` | passed |
 | `check_urdf` on generated model | passed |
 | Static fixed-world, 17-state/14-command, and neutral-state checks | passed |
@@ -114,15 +114,18 @@ Run `moveit_tiny` once with `-p cancel_after_sec:=1.0`. Then send one Ctrl+C to 
 
 Retain the launch logs, numeric outputs, environment values, and before/target/return screenshots or video before citing them as evidence.
 
-## Hardware Gates Not Yet Run
+## Hardware Gates
 
 | Gate | Status |
 |---|---:|
-| I10 hardware bridge non-motion | blocked |
-| I11 hardware action shims and safety tools | blocked |
-| I12 supervised hardware motion | blocked |
+| I10 hardware bridge non-motion | passed, 2026-07-22 |
+| I11 hardware action shims and safety tools | passed, 2026-07-22 |
+| I12 supervised hardware motion | passed, 2026-07-24 |
 
-Do not claim hardware support or supervised motion in release notes until those gates pass and their logs contain evidence.
+All three passed on a single BR-01 under supervision, at low speed. Release notes
+may say so and must not say more: fast motion, sustained duty, gripper commands
+and any second robot remain unmeasured. A claim without a session date and a log
+behind it does not go in release notes.
 
 ## Release Hardening Checks
 

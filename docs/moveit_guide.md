@@ -1,6 +1,6 @@
 # MoveIt Sim Guide
 
-`baxter_moveit_config` is a MoveIt 2 simulation profile for the Gazebo `ros2_control` arm controllers. It is not a hardware profile.
+`baxter_moveit_config` is a MoveIt 2 profile for the Gazebo `ros2_control` arm controllers, and — via `hardware_moveit.launch.py` — for the hardware action shims. The sim profile is the default; the hardware one has planned and executed on a real Baxter under supervision (2026-07-24).
 
 ## Scope
 
@@ -15,7 +15,23 @@ Passed I07/I08 evidence covers:
 | `/move_action` visible | passed |
 | left, right, and both-arm reversible plan/execute checks | manual/local |
 
-Hardware controllers, action shims, gripper motion, and supervised robot motion have not passed gates.
+Gripper motion has not passed a gate. Hardware controllers, action shims and
+supervised robot motion have — see `hardware_runbook.md` — in single supervised
+sessions on one BR-01.
+
+Three things had to be fixed before MoveIt could drive the robot, all of which
+bite any planner talking to these shims:
+
+| Blocker | Fix |
+|---|---|
+| MoveIt emits the current state as point 0 at `time_from_start=0` | The shim accepts a leading `t=0` point when it matches the measured pose, and still rejects one that does not |
+| MoveIt sends joints alphabetically (`e0, e1, s0, s1, w0, w1, w2`) | Positions are remapped by name, as the action defines |
+| The SRDF called the untuck pose a self-collision (1.7 mm, `upper_shoulder` vs `upper_elbow`) | Disabled for both arms in `config/baxter.srdf`, with the measurement in a comment |
+
+A planned trajectory settles further from target than a scripted single-joint
+move — 0.0128 rad against 0.0043-0.0078 rad — because it moves all seven joints
+across many waypoints. Use the planned figure when setting goal tolerances for
+planned motion.
 
 ## Groups And States
 

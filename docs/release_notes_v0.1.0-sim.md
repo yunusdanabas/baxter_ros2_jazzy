@@ -4,6 +4,12 @@ Date: 2026-07-09
 
 This is the first public sim-first baseline for `baxter_ros2_jazzy`.
 
+> **Read after the fact (2026-07-25).** The labels below are what was true at
+> release on 2026-07-09 and are left unchanged. The hardware gates have since
+> passed under supervision on one BR-01 — I10/I11 on 2026-07-22, I12 on
+> 2026-07-24 — so for current status see `CHANGELOG.md` (Unreleased) and
+> `docs/compatibility_matrix.md`, not this file.
+
 ## Support Labels
 
 | Profile | Support label | Evidence |

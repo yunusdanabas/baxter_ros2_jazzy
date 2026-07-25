@@ -1,6 +1,6 @@
 # Compatibility Matrix
 
-Statuses are based on I01-I09, I14, and I15 gate evidence. Anything not listed as passed is not a support claim.
+Statuses are based on I01-I09, I14, I15 gate evidence for simulation, and I10-I12 for hardware. Anything not listed as passed is not a support claim.
 
 ## Tested Profile
 
@@ -23,8 +23,8 @@ Statuses are based on I01-I09, I14, and I15 gate evidence. Anything not listed a
 | `sim_rviz` | passed, manual/local GUI | Complete RobotModel/TF and live arm-state display. |
 | `sim_moveit` | passed, manual/local smoke | Readiness-gated OMPL planning and execution. |
 | `sim_moveit_rviz` | passed, manual/local GUI | MotionPlanning on `both_arms`, OMPL planner list, and a 6-DOF marker on each gripper. |
-| `hardware_bridge` | blocked | I10 not run. |
-| `supervised hardware motion` | blocked | I12 not run. |
+| `hardware_bridge` | passed, supervised | I10/I11, 2026-07-22, BR-01 `011412P0024`. |
+| `supervised hardware motion` | passed, supervised | I12, 2026-07-24, both arms, low speed. |
 | `experimental_zenoh` | deferred | Not in default install/devcontainer/CI. |
 
 ## Scoped Limitations
@@ -38,4 +38,6 @@ Statuses are based on I01-I09, I14, and I15 gate evidence. Anything not listed a
 
 ## Not Tested
 
-Hardware bridge, robot networking, ROS 1 bridge-host builds, grippers, cameras, Zenoh fallback, and supervised hardware motion have not passed gates.
+ROS 1 bridge-host builds, gripper commands, cameras and the Zenoh fallback have not passed gates.
+
+Passed on hardware but only in single supervised sessions on one BR-01: the bridge, the action shims, supervised motion and MoveIt execution. Untested there: fast motion near the shim's 2.0 rad/s clamp, sustained duty, and any second robot.

@@ -11,8 +11,9 @@ This handoff is for the sim-first release baseline. It is not a hardware runbook
 | `sim_moveit` | passed, manual/local smoke |
 | `sim_moveit_rviz` | passed, manual/local GUI |
 | default CI/devcontainer | passed, hardware-free |
-| `hardware_bridge` | blocked |
-| supervised hardware motion | blocked |
+| `hardware_bridge` | passed, supervised (2026-07-22) |
+| supervised hardware motion | passed, supervised (2026-07-24) |
+| MoveIt on hardware | passed, supervised (2026-07-24) |
 | Zenoh/compatibility fallback | deferred |
 
 ## Default Release Check
@@ -41,18 +42,22 @@ Required evidence:
 4. Sim smoke result if model, sim, controller, or MoveIt behavior can change.
 5. Updated `docs/repos_and_pins.md`, `CHANGELOG.md`, and release notes.
 
-## Hardware Blockers
+## Hardware Scope
 
-Hardware support remains blocked by:
+The I10 non-motion, I11 action-shim and I12 supervised-motion gates have all
+passed on BR-01 `011412P0024` (2026-07-22 and 2026-07-24). Reproducing any of it
+still needs physical Baxter access, a bridge host, and whatever the local network
+policy allows.
 
-- Physical Baxter access.
-- Bridge host choice.
-- University network policy.
-- I10 non-motion bridge gate.
-- I11 safety/action-shim gate.
-- I12 supervised tiny motion gate.
+What a maintainer should hold the line on:
 
-The prep package `baxter_hardware_bridge` and `docs/hardware_runbook.md` are already in tree as prep-only. Do not expand them into a support claim, and do not merge gripper implementation, Zenoh fallback, or hardware examples into the default sim path without new gates and logs.
+- Hardware claims name the session that earned them. One supervised session on
+  one robot at low speed is what exists; do not let a PR widen that.
+- Anything touching the shim, the safety gate or `scripts/py_bridge.py` needs
+  `dry_run_test` (25 cases) green, and `scripts/test_bridge_loopback.sh` for
+  bridge changes, before merge.
+- Gripper commands, Zenoh fallback and hardware examples stay out of the default
+  sim path without new gates and logs.
 
 ## Ownership Backlog
 

@@ -1,7 +1,7 @@
 # Known Issues
 
 Defects in the sim-first baseline, with what is and is not affected. No defect is currently
-open. Blocked hardware scope (I10-I12) is not listed here; see `package_map.md`.
+open. Hardware scope and its limits are in `package_map.md` and `hardware_runbook.md`.
 
 ## Resolved: MotionPlanning display failed to load its robot model
 
