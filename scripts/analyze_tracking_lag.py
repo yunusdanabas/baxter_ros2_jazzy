@@ -14,11 +14,16 @@ Usage (from the repo root):
     bash -lc "source /root/baxter_ws/install/setup.bash && python3 /tmp/a.py /data/<bag>"
 
 It reads |ref_joint_states - joint_states| rather than the joint_command payload,
-because the bridge advertises its ROS 1 publishers with md5sum "*" and an empty
-message definition, so recorded joint_command messages cannot be deserialised
-(logs/I18_hardware_day.log.md F23). Their timestamps still delimit goal windows,
-which is all this needs them for. Once F23 is fixed, the command payload becomes
-readable and this can measure |command - measured| directly.
+because the I12 bag was recorded while the bridge advertised md5sum "*" with an
+empty message definition, so *that* bag's joint_command messages cannot be
+deserialised (logs/I18_hardware_day.log.md F23). Their timestamps still delimit
+goal windows, which is all this needs them for.
+
+F23 is fixed: py_bridge now sends the real md5sum and message definition, and a
+bag recorded through it decodes (verified against rosbag in the Noetic image).
+Any capture from here on can be measured as |command - measured| directly --
+that rewrite is waiting on a fresh capture, since re-running it against the old
+bag would still hit the empty schema.
 """
 from __future__ import print_function
 import sys

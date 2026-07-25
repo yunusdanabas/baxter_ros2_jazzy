@@ -49,6 +49,32 @@ TCPROS_HEADER_TIMEOUT_SEC = 10.0
 ROS2_PUBLISH_QUEUE_SIZE = 200
 ROS2_PUBLISH_TIMER_SEC = 0.01
 
+# Real ROS 1 md5sum + message definition per type we publish. rosbag stores the
+# publisher's connection header and nothing else, so advertising md5sum "*" with
+# no definition records a topic that cannot be deserialised afterwards -- it cost
+# us the joint_command payload in the I12 bag (F23). Values are `rosmsg md5` and
+# the .msg text from baxter-noetic:n07, the image the robot path uses.
+# Only the publish side needs these: the wildcard on the subscribe side is what
+# lets the bridge take any type with no schema, and it stays.
+ROS1_MSG_META: dict[str, tuple[str, str]] = {
+    "baxter_core_msgs/JointCommand": (
+        "19bfec8434dd568ab3c633d187c36f2e",
+        "int32 mode\n"
+        "float64[] command\n"
+        "string[]  names\n"
+        "\n"
+        "int32 POSITION_MODE=1\n"
+        "int32 VELOCITY_MODE=2\n"
+        "int32 TORQUE_MODE=3\n"
+        "int32 RAW_POSITION_MODE=4\n",
+    ),
+    "std_msgs/Float64": ("fdb28210bfa9d7c91146260178d9a584", "float64 data\n"),
+    # Not published today; here because they are the rest of the Baxter command
+    # surface (gripper/enable topics) and cost one line each.
+    "std_msgs/Bool": ("8b94c1b53db61fb6aed406028ad6332a", "bool data\n"),
+    "std_msgs/Empty": ("d41d8cd98f00b204e9800998ecf8427e", "\n"),
+}
+
 
 # ─── TCPROS protocol ─────────────────────────────────────────────
 
@@ -544,11 +570,13 @@ class ROS1Publisher:
             # sends leaks this thread forever.
             conn.settimeout(TCPROS_HEADER_TIMEOUT_SEC)
             hdr = _parse_tcpros_header(_recv_frame(conn))
-            del hdr  # negotiated; md5sum is wildcard
+            del hdr  # the subscriber's half; rospy validates ours, not vice versa
+            md5sum, msg_def = ROS1_MSG_META.get(self.msg_type, ("*", ""))
             resp = _build_tcpros_header({
-                "md5sum": "*",
+                "md5sum": md5sum,
                 "type": self.msg_type,
                 "topic": self.topic,
+                "message_definition": msg_def,
                 "callerid": self.caller_id,
             })
             conn.settimeout(TCPROS_SEND_TIMEOUT_SEC)
