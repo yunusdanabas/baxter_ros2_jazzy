@@ -98,7 +98,22 @@ class SimTinyTrajectory(Node):
         self.create_subscription(JointState, joint_states_topic, self._joint_state_cb, 1)
 
     def _joint_state_cb(self, msg: JointState) -> None:
-        self._latest_joint_state = msg
+        # Baxter publishes /robot/joint_states from two nodes: the realtime loop
+        # (17 arm + head joints, ~100 Hz) and the end-effector publisher (the
+        # gripper joints, ~40 Hz). A single message therefore need not carry the
+        # arm at all, so keep a merged view rather than the last message. In sim
+        # one publisher sends everything and this is a no-op.
+        merged = {}
+        if self._latest_joint_state is not None:
+            merged.update(
+                zip(self._latest_joint_state.name, self._latest_joint_state.position)
+            )
+        merged.update(zip(msg.name, msg.position))
+        combined = JointState()
+        combined.header = msg.header
+        combined.name = list(merged)
+        combined.position = [merged[name] for name in combined.name]
+        self._latest_joint_state = combined
         self._joint_state_sequence += 1
 
     def _wait_for_future(self, future, timeout_sec: float, description: str):
@@ -120,8 +135,12 @@ class SimTinyTrajectory(Node):
         deadline = time.monotonic() + timeout_sec
         while rclpy.ok():
             if self._joint_state_sequence > after_sequence and self._latest_joint_state is not None:
-                positions_for_joints(self._latest_joint_state, joint_names)
-                return self._latest_joint_state
+                try:
+                    positions_for_joints(self._latest_joint_state, joint_names)
+                except RuntimeError:
+                    pass          # merged view not complete yet; keep waiting
+                else:
+                    return self._latest_joint_state
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise RuntimeError("Timed out waiting for a fresh /joint_states sample")
