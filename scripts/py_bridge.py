@@ -34,6 +34,7 @@ from xmlrpc.server import SimpleXMLRPCRequestHandler, SimpleXMLRPCServer
 
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import ExternalShutdownException
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 from baxter_core_msgs.msg import AssemblyState, JointCommand
@@ -840,11 +841,20 @@ def main():
 
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # rclpy's SIGINT handler shuts the context down under us, so Ctrl-C
+        # leaves spin() by ExternalShutdownException, not KeyboardInterrupt.
+        # Both mean "stop"; neither is an error worth a traceback.
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # try_shutdown, not shutdown: the context is already down by now, and
+        # shutdown() threw "rcl_shutdown already called" and exited 1 on every
+        # clean stop -- burying any real shutdown error under a guaranteed
+        # traceback (F17). Keep rclpy's own signal handling: it installs a
+        # SIGINT handler even where the shell has set SIGINT to ignore, which
+        # is what keeps a backgrounded bridge stoppable.
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
