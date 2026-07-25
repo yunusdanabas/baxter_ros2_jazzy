@@ -154,6 +154,67 @@ ros2 run baxter_examples ik_service_client --ros-args -p limb:=right
 
 It calls `/compute_ik` and defaults to the seed poses from the ROS 1 example, expressed in `base`. Override with `-p x:= -p y:= -p z:=`, the `-p qx:= -p qy:= -p qz:= -p qw:=` orientation, `-p frame:=`, `-p timeout:=`, and `-p avoid_collisions:=false`. An unreachable pose prints `INVALID POSE - No Valid Joint Solution Found` and exits non-zero.
 
+## Collision Matrix And The SRDF
+
+`config/baxter.srdf` carries ~54 `disable_collisions` pairs, which is sparse for
+Baxter. One missing pair is what made `move_group` return
+`-10 START_STATE_IN_COLLISION` from the pose `tuck_arms.py -u` leaves the robot
+in: 1.7 mm of interference between `left_upper_shoulder` and `left_upper_elbow`.
+Those links are *two* apart in the chain, so the Setup Assistant never marked
+them `Adjacent`, and its sampling never hit the folded untuck configuration.
+
+Both sides are now disabled by hand, with the measurement in a comment. **A full
+Setup Assistant re-run regenerates that matrix from scratch and cannot
+rediscover them** — nothing in the regeneration knows about a sub-millimetre
+graze at one specific pose.
+
+`scripts/check_srdf.py` guards both halves of that. Run it before and after any
+regeneration.
+
+### Before regenerating: record the baseline
+
+```bash
+cp src/baxter_moveit_config/config/baxter.srdf /tmp/baxter.srdf.before
+```
+
+### After regenerating: diff, then verify the poses
+
+```bash
+# 1. What changed, and did the hand-added pairs survive? No ROS needed.
+python3 scripts/check_srdf.py diff /tmp/baxter.srdf.before \
+    src/baxter_moveit_config/config/baxter.srdf
+
+# 2. Do the known-good poses still plan? Needs move_group, no robot.
+ros2 run baxter_hardware_bridge mock_robot &
+ros2 launch baxter_moveit_config hardware_moveit.launch.py rviz:=false &
+python3 scripts/check_srdf.py poses
+```
+
+`diff` fails if either required pair is absent — re-add it by hand with its
+comment rather than accepting the regenerated matrix wholesale. `poses` asks
+`/check_state_validity` about the measured untuck pose and the SRDF's own
+neutral state, and on failure prints the contacting links and the depth, which
+is how the original pair was identified.
+
+Expected output on a good SRDF:
+
+```text
+PASS: untuck (measured 2026-07-24) is collision-free
+PASS: neutral (SRDF group_state) is collision-free
+OVERALL: PASS
+```
+
+The check is known to catch the real failure: deleting the left pair and
+restarting `move_group` reproduces it at the desk, naming the pair and a depth
+of 0.00206 — the untuck pose goes invalid while neutral stays valid, exactly as
+on hardware.
+
+> **Do not send `/check_state_validity` a joint MoveIt does not know.** A
+> `RobotState` containing `head_nod` throws an uncaught `moveit::Exception` and
+> kills `move_group` with exit -6 (I18 F21). `check_srdf.py` sends only the 14
+> arm joints for that reason. If `move_group` vanishes mid-session, look at the
+> last request before blaming the robot.
+
 ## Diagnostic Scope
 
 | Diagnostic | Classification |
