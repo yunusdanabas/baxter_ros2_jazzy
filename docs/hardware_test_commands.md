@@ -363,10 +363,28 @@ outbound **and back**. Expected per arm:
 > ```
 >
 > The per-move log line reports the resulting rad/s. **Escalate one step at a
-> time**, checking the arm between runs — every tracking figure in these docs
-> describes gentle motion, and nothing above ~0.5 rad/s has been tried on
-> hardware. A goal that would exceed the clamp is rejected at accept time with
+> time**, checking the arm between runs. A goal that would exceed the clamp is
+> rejected at accept time with
 > `needs X rad/s, limit is Y (max_step_rad_per_cycle)`.
+>
+> Measured 2026-07-25: `s1` aborts on path tolerance at 0.50 rad/s. Lag is
+> ≈ 0.4 s × commanded velocity, so `path_tolerance_rad` is the speed ceiling.
+>
+> `-p joint:=<suffix>` moves a joint other than `s1` (`s0`, `s1`, `e0`, `e1`,
+> `w0`, `w1`, `w2`). The same joint runs on both arms, which is what separates
+> an asymmetric *plan* from an asymmetric *arm*:
+>
+> ```bash
+> # left_w0 vs right_w0, identical move, stepping speed until each aborts
+> ros2 run baxter_examples sim_tiny_trajectory --ros-args \
+>   -p left_action:=/robot/limb/left/follow_joint_trajectory \
+>   -p right_action:=/robot/limb/right/follow_joint_trajectory \
+>   -p joint_states_topic:=/robot/joint_states \
+>   -p joint:=w0 -p offset:=0.4 -p duration:=1.0
+> ```
+>
+> This is the open question from the MoveIt session: `left_w0` and `left_e0`
+> aborted 8 times while the right arm completed the same dual-arm plans.
 
 ```
 /robot/limb/<side>/follow_joint_trajectory outbound feedback: NNN messages

@@ -33,9 +33,21 @@ RIGHT_JOINTS = [
     "right_w2",
 ]
 
-MOTION_JOINT_INDEX = 1
+DEFAULT_MOTION_JOINT = "s1"
 JOINT_DELTA_RAD = 0.35
-JOINT_LIMIT = (-2.147, 1.047)
+# Position limits per joint suffix, from the URDF. The action shim keeps its own
+# copy and rejects any out-of-limit point, so this is not the safety boundary --
+# it is only here to pick a reversible target that will not be rejected, and to
+# fail early with a clear message when no such target exists.
+JOINT_LIMITS = {
+    "s0": (-1.70167993878, 1.70167993878),
+    "s1": (-2.147, 1.047),
+    "e0": (-3.05417993878, 3.05417993878),
+    "e1": (-0.05, 2.618),
+    "w0": (-3.059, 3.059),
+    "w1": (-1.57079632679, 2.094),
+    "w2": (-3.059, 3.059),
+}
 JOINT_LIMIT_MARGIN_RAD = 0.05
 FINAL_TOLERANCE_RAD = 0.02
 TRAJECTORY_DURATION_SEC = 3.0
@@ -54,16 +66,25 @@ def positions_for_joints(joint_state: JointState, joint_names: List[str]) -> Lis
     return positions
 
 
-def choose_reversible_target(start: float, delta: float = JOINT_DELTA_RAD) -> float:
-    lower, upper = JOINT_LIMIT
+def choose_reversible_target(
+    start: float, delta: float = JOINT_DELTA_RAD, joint: str = DEFAULT_MOTION_JOINT
+) -> float:
+    try:
+        lower, upper = JOINT_LIMITS[joint]
+    except KeyError:
+        raise RuntimeError(
+            f"Unknown joint '{joint}'; expected one of {sorted(JOINT_LIMITS)}"
+        )
     if not lower <= start <= upper:
-        raise RuntimeError(f"s1 start {start:.3f} rad is outside [{lower}, {upper}]")
+        raise RuntimeError(
+            f"{joint} start {start:.3f} rad is outside [{lower}, {upper}]"
+        )
     if start + delta <= upper - JOINT_LIMIT_MARGIN_RAD:
         return start + delta
     if start - delta >= lower + JOINT_LIMIT_MARGIN_RAD:
         return start - delta
     raise RuntimeError(
-        f"No safe reversible s1 target {delta:.3f} rad from {start:.3f} rad"
+        f"No safe reversible {joint} target {delta:.3f} rad from {start:.3f} rad"
     )
 
 
@@ -86,9 +107,18 @@ class SimTinyTrajectory(Node):
         # drop duration to walk the move toward the shim's 2.0 rad/s clamp.
         self.declare_parameter("duration", TRAJECTORY_DURATION_SEC)
         self.declare_parameter("offset", JOINT_DELTA_RAD)
+        # Which joint moves. Everything measured so far moved s1; comparing the
+        # same joint on both arms is what tells an asymmetric plan apart from an
+        # asymmetric arm (see logs/I20_fast_motion_and_srdf.log.md).
+        self.declare_parameter("joint", DEFAULT_MOTION_JOINT)
         self._cancel_after_sec = self.get_parameter("cancel_after_sec").value
         self._duration = float(self.get_parameter("duration").value)
         self._offset = float(self.get_parameter("offset").value)
+        self._joint = str(self.get_parameter("joint").value)
+        if self._joint not in JOINT_LIMITS:
+            raise RuntimeError(
+                f"Unknown joint '{self._joint}'; expected one of {sorted(JOINT_LIMITS)}"
+            )
         self.left_action = self.get_parameter("left_action").value
         self.right_action = self.get_parameter("right_action").value
         joint_states_topic = self.get_parameter("joint_states_topic").value
@@ -115,6 +145,16 @@ class SimTinyTrajectory(Node):
         combined.position = [merged[name] for name in combined.name]
         self._latest_joint_state = combined
         self._joint_state_sequence += 1
+
+    def _motion_index(self, joint_names: List[str]) -> int:
+        """Position of the joint being moved, by suffix, in this arm's name list."""
+        suffixes = [name.rsplit("_", 1)[1] for name in joint_names]
+        try:
+            return suffixes.index(self._joint)
+        except ValueError:
+            raise RuntimeError(
+                f"Joint '{self._joint}' is not in {joint_names}"
+            )
 
     def _wait_for_future(self, future, timeout_sec: float, description: str):
         deadline = time.monotonic() + timeout_sec
@@ -203,14 +243,13 @@ class SimTinyTrajectory(Node):
         if not client.wait_for_server(timeout_sec=30.0):
             raise RuntimeError(f"Action server not available: {action_name}")
 
-        motion_joint = joint_names[MOTION_JOINT_INDEX]
-        travel = abs(
-            target_positions[MOTION_JOINT_INDEX] - start_positions[MOTION_JOINT_INDEX]
-        )
+        index = self._motion_index(joint_names)
+        motion_joint = joint_names[index]
+        travel = abs(target_positions[index] - start_positions[index])
         self.get_logger().info(
             f"{action_name} {label}: {motion_joint} "
-            f"{start_positions[MOTION_JOINT_INDEX]:.3f} -> "
-            f"{target_positions[MOTION_JOINT_INDEX]:.3f} rad "
+            f"{start_positions[index]:.3f} -> "
+            f"{target_positions[index]:.3f} rad "
             f"in {self._duration:.2f} s ({travel / self._duration:.2f} rad/s)"
         )
 
@@ -312,8 +351,9 @@ class SimTinyTrajectory(Node):
         start_state = self.wait_for_fresh_joint_state(joint_names)
         start_positions = positions_for_joints(start_state, joint_names)
         target_positions = start_positions.copy()
-        target_positions[MOTION_JOINT_INDEX] = choose_reversible_target(
-            start_positions[MOTION_JOINT_INDEX], self._offset
+        index = self._motion_index(joint_names)
+        target_positions[index] = choose_reversible_target(
+            start_positions[index], self._offset, self._joint
         )
         if not self.send_trajectory(
             action_name, joint_names, start_positions, target_positions, "outbound"
