@@ -9,6 +9,15 @@ Planning workspace for migrating the Baxter Research Robot SDK from ROS 1 Noetic
 ~/.../catkin_ws/src/baxter_noetic/      # Original Noetic repo (unchanged)
 ```
 
+`baxter_noetic_ref/` is 64 MB and untracked. On a fresh machine, restore it with:
+
+```bash
+git clone https://github.com/yunusdanabas/baxter_noetic.git plan/baxter_noetic_ref
+```
+
+Several gate logs (I10, I17) cite file paths under it as evidence, so those
+citations only resolve once it is restored.
+
 ## Files
 
 | File | Purpose |
@@ -16,6 +25,7 @@ Planning workspace for migrating the Baxter Research Robot SDK from ROS 1 Noetic
 | `MASTER_PLAN.md` | All steps with status tracking |
 | `PROMPTS.md` | Accumulated agent prompts (append-only) |
 | `EXISTING_RESEARCH.md` | Copy of the original research plan — starting reference for S01-S03 |
+| `CONDUCTOR_RESEARCH.md` | The migration feasibility report this whole project started from |
 | `baxter_noetic_ref/` | Read-only copy of the Noetic repo for agent reference (no .git) |
 | `logs/SXX_*.log.md` | Agent findings per step (YAML+Markdown) |
 | `.gitignore` | Prevents tracking in version control |
