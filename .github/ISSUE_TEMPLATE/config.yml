@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Support scope — what is actually supported
+    url: https://github.com/yunusdanabas/baxter_ros2_jazzy/blob/main/SUPPORT.md
+    about: Read this first. Hardware claims are scoped to named supervised sessions on one robot.
+  - name: Safety or security report
+    url: https://github.com/yunusdanabas/baxter_ros2_jazzy/blob/main/SECURITY.md
+    about: Unsafe motion, unsafe enable flows, and misleading hardware claims are handled as safety issues.

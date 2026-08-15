@@ -1,0 +1,6 @@
+# Default reviewers for public-facing paths. Update the handle if ownership changes.
+* @yunusdanabas
+
+/src/ @yunusdanabas
+/docs/ @yunusdanabas
+/.github/ @yunusdanabas

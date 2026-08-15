@@ -10,6 +10,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Publish hygiene (no placeholder maintainer contact)
+        run: |
+          # A release is not ready while a contact surface still points at
+          # example.com. Runs before the build so it fails in seconds, not
+          # minutes. Covers the same three surfaces as the checklist no-go row.
+          if grep -RIn '@example\.com' src --include='package.xml' SECURITY.md CODE_OF_CONDUCT.md; then
+            echo "FAIL: replace the placeholder with a real maintainer contact before publish"
+            exit 1
+          fi
+          echo "maintainer_contact_check=passed"
+
       - name: Install ROS 2 Jazzy dependencies
         run: |
           sudo apt-get update
@@ -69,19 +80,32 @@ jobs:
               Path('src/baxter_moveit_config/launch/move_group.launch.py'),
               Path('src/baxter_moveit_config/launch/sim_moveit.launch.py'),
               Path('src/baxter_moveit_config/launch/sim_moveit_rviz.launch.py'),
+              Path('src/baxter_moveit_config/launch/hardware_moveit.launch.py'),
               Path('src/baxter_moveit_config/scripts/wait_for_sim_ready.py'),
-              Path('src/baxter_examples/baxter_examples/sim_tiny_trajectory.py'),
-              Path('src/baxter_examples/baxter_examples/moveit_left_tiny.py'),
               Path('src/baxter_hardware_bridge/launch/hardware_bringup.launch.py'),
               Path('src/baxter_hardware_bridge/launch/dry_run.launch.py'),
               Path('src/baxter_hardware_bridge/baxter_hardware_bridge/follow_joint_trajectory_shim.py'),
               Path('src/baxter_hardware_bridge/baxter_hardware_bridge/dry_run_test.py'),
-              Path('src/baxter_hardware_bridge/baxter_hardware_bridge/executor_util.py'),
+              Path('src/baxter_hardware_bridge/baxter_hardware_bridge/safety.py'),
+              Path('src/baxter_hardware_bridge/baxter_hardware_bridge/mock_robot.py'),
           ]
           for path in paths:
               spec = importlib.util.spec_from_file_location(path.stem.replace('.', '_'), path)
               module = importlib.util.module_from_spec(spec)
               spec.loader.exec_module(module)
+
+          # baxter_examples is ament_python, so import it as the package it is.
+          # Path-based import would not exercise the intra-package
+          # `from baxter_examples.trajectory_helpers import ...` that the
+          # console_scripts entry points actually run.
+          for module_name in (
+              'baxter_examples.trajectory_helpers',
+              'baxter_examples.sim_tiny_trajectory',
+              'baxter_examples.moveit_left_tiny',
+              'baxter_examples.moveit_pose',
+              'baxter_examples.ik_service_client',
+          ):
+              importlib.import_module(module_name)
           print('python_import_checks=passed')
           PY
           python3 - <<'PY'
@@ -121,6 +145,24 @@ jobs:
                   'exception: ' + ', '.join(bad))
           print('cleanup_handler_checks=passed')
           PY
+
+      - name: Lint (undefined and unused names)
+        run: |
+          pipx install ruff
+          # F rules only: F401 unused import, F821 undefined name. The compile
+          # and import checks above pass happily on both, which is how nine
+          # orphaned imports survived the ament_python refactor (I21 F21-F).
+          # Not the full ruff default set: this repo has no style gate and
+          # adding one now would flag hundreds of pre-existing lines.
+          ruff check --select F src scripts --exclude src/baxter_common_ros2
+          echo "ruff_f_checks=passed"
+
+      - name: Package tests
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          colcon test --base-paths src --packages-select baxter_examples
+          colcon test-result --verbose
 
       - name: Hardware bridge dry-run
         run: |
@@ -202,8 +244,21 @@ jobs:
               assert pair not in collision_pairs, pair
               collision_pairs.add(pair)
               assert collision.attrib['reason'] in {'Adjacent', 'Default', 'Never'}
-          assert ('left_upper_elbow', 'left_upper_shoulder') not in collision_pairs
-          assert ('right_upper_elbow', 'right_upper_shoulder') not in collision_pairs
+          # These two pairs are hand-added and MUST stay disabled. Links two
+          # apart in the chain graze by 1.7 mm at the pose `tuck_arms.py -u`
+          # leaves the robot in, which made move_group return -10
+          # START_STATE_IN_COLLISION on hardware (I18 F18.3). The Setup
+          # Assistant cannot rediscover them: its sampling does not converge
+          # for this robot (I20 F-B), so a regenerated matrix drops them and
+          # the planner then refuses the robot's own untuck pose.
+          # scripts/check_srdf.py REQUIRED_PAIRS is the same guard for the
+          # diff path; the two must agree.
+          for required in (('left_upper_elbow', 'left_upper_shoulder'),
+                           ('right_upper_elbow', 'right_upper_shoulder')):
+              assert required in collision_pairs, f'hand-added pair lost: {required}'
+          # I20 F-B kept the 54-pair matrix over a 263-311 pair regenerated one.
+          # Three docs promise this number; gate it rather than only print it.
+          assert len(collision_pairs) == 54, len(collision_pairs)
 
           with (moveit_share / 'config' / 'ompl_planning.yaml').open() as handle:
               ompl = yaml.safe_load(handle)

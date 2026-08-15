@@ -11,6 +11,24 @@ src/baxter_common_ros2/
 # Robot session recordings (bags + inventory snapshots) — local only, large
 data/
 
+# Host-local Docker disk inventory (paths, free %, image IDs) — never publish
+docker/local_image_inventory.md
+
+# Scratch space for local tooling; nothing here belongs in a release
+tmp/
+
+# Manual: sources are tracked, build artifacts are not. The PDF is a few hundred
+# KB that would be rewritten on every text edit.
+docs/manual/*.pdf
+docs/manual/*.aux
+docs/manual/*.log
+docs/manual/*.out
+docs/manual/*.toc
+docs/manual/*.fls
+docs/manual/*.fdb_latexmk
+docs/manual/*.synctex.gz
+docs/manual/chapters/*.aux
+
 # LLM agent workflow (local only; not part of the public OSS tree)
 plan/
 .cursor/
