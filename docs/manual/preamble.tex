@@ -1,0 +1,93 @@
+% Shared preamble. Everything here is stock TeX Live; no external downloads,
+% so the manual builds on any machine that can build the workspace docs.
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=25mm,headheight=14pt]{geometry}
+\usepackage{microtype}
+
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds,calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage[hidelinks]{hyperref}
+
+% ---------------------------------------------------------------- colours ---
+\definecolor{codebg}{HTML}{F6F8FA}
+\definecolor{coderule}{HTML}{D0D7DE}
+\definecolor{keyword}{HTML}{0550AE}
+\definecolor{comment}{HTML}{6E7781}
+\definecolor{string}{HTML}{0A6E3B}
+\definecolor{warnbg}{HTML}{FFF4E5}
+\definecolor{warnrule}{HTML}{D97706}
+\definecolor{notebg}{HTML}{EEF4FF}
+\definecolor{noterule}{HTML}{3B6FD4}
+
+% ----------------------------------------------------------------- code -----
+\lstdefinestyle{shell}{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  frame=single, rulecolor=\color{coderule}, framesep=5pt,
+  breaklines=true, breakatwhitespace=false,
+  postbreak=\mbox{\textcolor{coderule}{$\hookrightarrow$}\space},
+  columns=fullflexible, keepspaces=true,
+  showstringspaces=false, upquote=true,
+  literate={-}{{-}}1 {~}{{\textasciitilde}}1 {>}{{\textgreater}}1 {<}{{\textless}}1,
+}
+\lstdefinestyle{py}{style=shell,
+  language=Python,
+  keywordstyle=\color{keyword}\bfseries,
+  commentstyle=\color{comment}\itshape,
+  stringstyle=\color{string},
+}
+\lstset{style=shell}
+\newcommand{\cmd}[1]{\texttt{\small #1}}
+
+% --------------------------------------------------------------- callouts ---
+% Support claims in this manual are bounded by dated gates. These two boxes are
+% how that boundary stays visible instead of being buried in a paragraph.
+\newtcolorbox{safetybox}[1][Safety]{
+  breakable, enhanced, colback=warnbg, colframe=warnrule,
+  boxrule=0.4pt, left=6pt, right=6pt, top=5pt, bottom=5pt,
+  fonttitle=\bfseries\small, title={#1}}
+
+\newtcolorbox{notebox}[1][Note]{
+  breakable, enhanced, colback=notebg, colframe=noterule,
+  boxrule=0.4pt, left=6pt, right=6pt, top=5pt, bottom=5pt,
+  fonttitle=\bfseries\small, title={#1}}
+
+% ---------------------------------------------------------------- headers ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\nouppercase{\leftmark}}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\setlist{itemsep=2pt, parsep=0pt, topsep=4pt}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+% --------------------------------------------------------------- graphics ---
+% Screenshots need a GUI session, so they may legitimately be absent on a
+% headless build. Missing artwork should not fail the build; it should be
+% visibly missing. \graphicsorplaceholder{file}{width}{what it would show}
+\newcommand{\graphicsorplaceholder}[3]{%
+  \IfFileExists{#1}{\includegraphics[width=#2]{#1}}{%
+    \fbox{\parbox[c][32mm][c]{#2}{\centering\small\itshape
+      figure not generated\\[2pt]\footnotesize\normalfont #3\\[2pt]
+      \texttt{\scriptsize bash docs/manual/figures/generate.sh}}}}%
+}
+

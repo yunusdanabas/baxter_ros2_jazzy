@@ -1,0 +1,49 @@
+% Hardware command path: ROS 1 master on the robot, through the pure-Python
+% bridge, to the ROS 2 side. Drawn from scripts/py_bridge.py and
+% src/baxter_hardware_bridge/.
+\begin{tikzpicture}[
+  font=\small,
+  node distance=6mm,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=8mm,
+              inner xsep=5pt, fill=white},
+  ros1/.style={box, fill=warnbg, draw=warnrule},
+  ros2/.style={box, fill=notebg, draw=noterule},
+  bridge/.style={box, fill=codebg, draw=coderule, very thick},
+  flow/.style={-{Stealth[length=2mm]}, thick},
+  lbl/.style={font=\scriptsize\ttfamily, inner sep=1.5pt, fill=white},
+]
+
+\node[ros1] (robot)  {Baxter\\\scriptsize ROS~1 Noetic master};
+\node[ros1, below=8mm of robot] (jointstates) {\ttfamily/robot/joint\_states\\\ttfamily/robot/state};
+\node[ros1, above=8mm of robot] (jointcmd) {\ttfamily/robot/limb/*/\\\ttfamily joint\_command};
+
+\node[bridge, right=22mm of robot, minimum height=30mm, text width=24mm]
+  (bridge) {\ttfamily py\_bridge.py\\[2pt]\scriptsize XML-RPC\\\scriptsize raw TCPROS\\[2pt]\scriptsize no rospy,\\\scriptsize no ROS~1 install};
+
+\node[ros2, right=20mm of bridge, text width=26mm] (shim)
+  {\scriptsize FollowJointTrajectory\\\small shim (per arm)\\[2pt]\scriptsize validate $\rightarrow$ safety gate\\\scriptsize $\rightarrow$ interpolate at 100\,Hz};
+
+\node[ros2, above=10mm of shim, text width=26mm] (moveit) {MoveIt~2\\\scriptsize\ttfamily move\_group};
+\node[ros2, below=10mm of shim, text width=26mm] (clients) {Example clients\\\scriptsize\ttfamily sim\_tiny\_trajectory};
+
+\node[box, right=16mm of shim, draw=noterule, text width=20mm] (safety)
+  {\ttfamily baxter\_\\safety\_check};
+
+\draw[flow] (jointstates.east) -- ++(6mm,0) |- (bridge.west);
+\draw[flow] (bridge.west) ++(0,6mm) -- ++(-6mm,0) |- (jointcmd.east);
+\draw[flow] (bridge) -- node[lbl,above]{ROS~2} (shim);
+\draw[flow] (shim) -- (bridge);
+\draw[flow] (moveit) -- (shim);
+\draw[flow] (clients) -- (shim);
+\draw[flow] (shim) -- (safety);
+
+\begin{scope}[on background layer]
+  \node[draw=warnrule, dashed, rounded corners, inner sep=4mm,
+        fit=(jointcmd)(robot)(jointstates), label={[font=\scriptsize\bfseries,
+        text=warnrule]below:ROS 1 / robot}] {};
+  \node[draw=noterule, dashed, rounded corners, inner sep=4mm,
+        fit=(moveit)(shim)(clients)(safety), label={[font=\scriptsize\bfseries,
+        text=noterule]below:ROS 2 Jazzy / laptop}] {};
+\end{scope}
+
+\end{tikzpicture}

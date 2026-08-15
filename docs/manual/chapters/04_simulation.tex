@@ -1,0 +1,156 @@
+\chapter{Simulation}
+\label{ch:sim}
+
+\section{Launching}
+
+\begin{lstlisting}
+# headless server, the default for scripted checks
+ros2 launch baxter_gz_sim sim.launch.py headless:=true
+
+# with the Gazebo GUI
+ros2 launch baxter_gz_sim sim.launch.py headless:=false
+
+# with RViz as well
+ros2 launch baxter_gz_sim sim_rviz.launch.py headless:=false
+\end{lstlisting}
+
+Run one simulation at a time.
+
+\begin{notebox}[Do not reach for \texttt{ROS\_DOMAIN\_ID}]
+It is tempting to isolate concurrent runs with a domain ID or a Gazebo partition.
+Do not. The documented workflow runs a single simulation, and setting a domain has
+silently split the bridge from the action shim --- two halves of one system, each
+convinced the other was absent. If you need isolation, stop the other simulation.
+\end{notebox}
+
+\section{The model}
+
+The simulation URDF fixes \texttt{world}~$\rightarrow$~\texttt{base} at
+$z=0.92418$\,m, which puts the bottom of the pedestal on the floor. This is a
+fixed joint, not a floating base with a settle phase: the robot is bolted down in
+reality and a drop-and-settle would only add nondeterminism to every test that
+follows. Both arms start at the SRDF neutral state.
+
+\begin{figure}[h]
+\centering
+\graphicsorplaceholder{figures/sim_rviz.png}{\linewidth}{the plain RViz profile
+with the RobotModel and TF displays}
+\caption{\texttt{sim\_rviz.launch.py}. Fixed frame \texttt{world}, Global Status
+Ok, RobotModel and TF displays active. This is the profile to check first: if the
+model does not appear here, nothing in Chapter~\ref{ch:moveit} will work either.}
+\label{fig:simrviz}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\graphicsorplaceholder{figures/tf_tree.pdf}{\linewidth}{the kinematic tree
+derived from the simulation URDF}
+\caption{Kinematic tree from \texttt{baxter\_gz\_control.urdf.xacro}. Dashed
+edges are fixed joints; the arm joints are the seven per side that carry position
+commands.}
+\label{fig:tftree}
+\end{figure}
+
+Seventeen joints publish state: fourteen arm joints, \texttt{head\_pan}, and one
+finger joint per gripper. Fourteen accept position commands --- the arms only.
+
+\section{Controllers}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+\textbf{Controller} & \textbf{Interface} \\
+\midrule
+\texttt{left\_arm\_controller} & \texttt{/left\_arm\_controller/follow\_joint\_trajectory} \\
+\texttt{right\_arm\_controller} & \texttt{/right\_arm\_controller/follow\_joint\_trajectory} \\
+\texttt{joint\_state\_broadcaster} & publishes \texttt{/joint\_states} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{lstlisting}
+ros2 control list_controllers      # all three must be active
+ros2 topic echo /joint_states --once
+\end{lstlisting}
+
+Command limits are enforced at the controller manager
+(\texttt{enforce\_command\_limits: true}), and every arm joint carries a
+trajectory and goal constraint. The goal constraint is $0.02$\,rad, which is the
+number every example client checks itself against.
+
+\section{The smoke client}
+
+\begin{lstlisting}
+ros2 launch baxter_examples sim_tiny_trajectory.launch.py
+\end{lstlisting}
+
+For each arm in turn the client reads a fresh joint state, picks a limit-safe
+reversible target, commands it, verifies the final position against a fresh
+reading, and returns to the measured start. Action success alone is not treated
+as a pass: the client re-reads the state and compares. An action server that
+reports success while the arm did not move is exactly the failure worth catching.
+
+Useful parameters:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}llX@{}}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Effect} \\
+\midrule
+\texttt{joint} & \texttt{s1} & Which joint moves. Any of \texttt{s0 s1 e0 e1 w0 w1 w2}. \\
+\texttt{offset} & 0.35\,rad & How far. \\
+\texttt{duration} & 3.0\,s & How long, so offset/duration sets speed. \\
+\texttt{cancel\_after\_sec} & 0.0 & Cancel mid-motion and verify the hold. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Both arms always move the same joint. That is the point of the parameter: on
+hardware, comparing the same joint left against right is what distinguishes an
+asymmetric \emph{plan} from an asymmetric \emph{arm}
+(Section~\ref{sec:moveit-hardware}).
+
+\section{Cancellation}
+
+\begin{lstlisting}
+ros2 run baxter_examples sim_tiny_trajectory --ros-args \
+    -p use_sim_time:=true -p cancel_after_sec:=1.0
+\end{lstlisting}
+
+The requirement is not merely that cancellation is accepted. The arm must
+\emph{hold} where it stopped, not sag, and the client verifies that by measuring
+drift after the cancel. A cancel that drops the arm into gravity compensation
+would pass a naive check and is a safety-relevant difference on hardware.
+
+\section{Expected diagnostics}
+
+Some Gazebo complaints are normal and should not be chased:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+\textbf{Message} & \textbf{Why it is expected} \\
+\midrule
+DART cannot create the gripper mimic constraint & Arm-only scope. Gripper TF is available; contact fidelity is not claimed. \\
+Controller period 100\,Hz slower than physics at 1\,kHz & Controllers need not run every physics step. \\
+Executor unavailable during hardware initialization & Benign if successful initialisation follows immediately. \\
+Gazebo exits $-2$ after one Ctrl+C & Normal SIGINT status. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Missing joints, disabled command limits, controller failure, TF gaps, hangs, and
+leftover processes are \emph{not} in this category.
+
+\section{Scope}
+
+Only arm joints are controlled. Grippers, cameras, obstacle sensing, and
+compatibility fallbacks are outside this profile. Headless Gazebo is camera-less
+by construction, so any camera work needs a dedicated path that does not exist
+yet.

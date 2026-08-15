@@ -1,0 +1,118 @@
+\chapter{The Baxter platform}
+\label{ch:platform}
+
+This chapter is background: what the hardware is, what its joints are called, and
+which of the legacy ROS~1 concepts survive into this workspace. Everything here
+is factual description of the robot, drawn from the Rethink documentation set and
+from what the robot was observed to do during the hardware sessions.
+
+\section{The robot}
+
+Baxter is a two-armed research robot on a fixed pedestal. Each arm has seven
+revolute joints; the arms are series-elastic, so every joint has a spring between
+the motor and the link. That single design choice explains most of what
+Chapter~\ref{ch:hwmotion} measures: the arm is compliant by construction, it does
+not track a fast setpoint rigidly, and lag is a physical property rather than a
+tuning defect.
+
+The workspace also carries a head with a pan joint, a screen, and two
+one-degree-of-freedom electric grippers. This workspace commands the arms only.
+The head pan and the two gripper finger joints are published as state and are not
+commanded; the model provides them so that TF and the robot display are complete.
+
+\section{Joint naming}
+
+Joints are named \texttt{<side>\_<segment>}, where side is \texttt{left} or
+\texttt{right}. The seven suffixes, in chain order from the torso outward:
+
+\begin{center}
+\resizebox{\linewidth}{!}{\input{figures/kinematic_chain}}
+\end{center}
+
+\begin{itemize}
+  \item \texttt{s0}, \texttt{s1} --- shoulder rotation and flexion.
+  \item \texttt{e0}, \texttt{e1} --- upper-arm roll and elbow flexion.
+  \item \texttt{w0}, \texttt{w1}, \texttt{w2} --- wrist roll, flexion, and final roll.
+\end{itemize}
+
+Two features of that table matter later. First, \texttt{s1} is the only strongly
+asymmetric joint ($-2.147$ to $1.047$\,rad): a move that fits in one direction may
+not fit in the other, which is why the example clients pick a reversible target
+rather than a fixed offset. Second, the three wrist joints permit
+$4.0$\,rad/s against $1.5$\,rad/s for the shoulder and elbow --- so a planner that
+distributes motion evenly across joints will drive the wrists fastest. That is
+the mechanism behind the MoveIt hardware limitation in
+Section~\ref{sec:moveit-hardware}.
+
+\section{Tucked and untucked}
+
+Baxter parks with its arms folded against the torso. In that pose \texttt{s1}
+sits at approximately $-2.175$\,rad, which is \emph{outside} the URDF limit table
+this workspace enforces ($-2.147$). This is not a transcription error: the parked
+pose is a mechanical rest position rather than a commanded one.
+
+The consequence is deliberate and worth stating early. This workspace's action
+shim rejects any goal containing an out-of-limit position, so while the robot is
+tucked it will refuse to move --- correctly. Untucking is therefore done with the
+legacy Rethink tool, not through the ROS~2 path, and Chapter~\ref{ch:bridge}
+explains why replacing that tool is the one part of the legacy stack this project
+does not simply reimplement.
+
+\section{Enabling}
+
+Baxter's arms are unpowered until the robot is explicitly enabled, and it reports
+its state on \texttt{/robot/state} as an \texttt{AssemblyState}: enabled, stopped,
+in error, and whether an estop is engaged. Motion requires enabled, not stopped,
+no error.
+
+An enable can be refused. If the robot believes its arms are in collision --- which
+the tucked pose can trigger --- the enable is dropped almost immediately.
+The legacy untuck tool works around this by suppressing collision avoidance on
+both limbs at 20\,Hz \emph{while} it republishes the enable, rather than enabling
+once and waiting. That detail is not a curiosity: it is the difference between an
+enable that holds and one that does not, and it was rediscovered the hard way
+during the 2026-07-22 session.
+
+\begin{safetybox}
+An enabled Baxter has powered arms. In gravity-compensation mode --- enabled but
+uncommanded --- the arms hold position but move freely if pushed, and they will
+drift. Never enable the robot without the e-stop in reach and the workspace clear.
+\end{safetybox}
+
+\section{The legacy ROS 1 interface}
+
+The robot runs its own ROS~1 Noetic master. Everything this workspace does on
+hardware is a client of that master. The topics that matter:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}llX@{}}
+\toprule
+\textbf{Topic} & \textbf{Type} & \textbf{Role} \\
+\midrule
+\texttt{/robot/state} & \texttt{AssemblyState} & Enabled, stopped, error, estop. The safety gate reads this. \\
+\texttt{/robot/joint\_states} & \texttt{JointState} & Measured positions. Published by more than one node. \\
+\texttt{/robot/ref\_joint\_states} & \texttt{JointState} & The robot's own commanded reference, $\approx$140\,Hz. \\
+\texttt{/robot/limb/*/joint\_command} & \texttt{JointCommand} & Position commands in. \\
+\texttt{robot/set\_super\_enable} & \texttt{Bool} & Enable/disable. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{notebox}[One measurement worth carrying forward]
+\texttt{/robot/joint\_states} is published by \emph{two} nodes --- arm joints from
+one, gripper joints from another. A subscriber that keeps only the latest message
+therefore sees an incomplete picture roughly a third of the time. Any client that
+reads joint positions on hardware has to merge across messages by name. This is
+handled in the workspace's clients and is called out again in
+Section~\ref{sec:jointstate-merge}, because it is the kind of defect that looks
+like flaky hardware.
+\end{notebox}
+
+Commanded motion is not fire-and-forget. \texttt{JointCommand} has a timeout: if
+commands stop arriving for longer than \texttt{joint\_command\_timeout}
+(0.2\,s by default), the arm reverts to gravity compensation. Holding a position
+means continuing to command it, which is why the shim in
+Chapter~\ref{ch:bridge} publishes at 100\,Hz for as long as a goal is active and
+keeps commanding the final point after the trajectory ends.

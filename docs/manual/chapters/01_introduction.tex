@@ -1,0 +1,88 @@
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{What this workspace is}
+
+\texttt{baxter\_ros2\_jazzy} runs a Rethink Robotics Baxter Research Robot from
+ROS~2 Jazzy. The default path is simulation: Gazebo Harmonic, \texttt{ros2\_control}
+arm controllers, and MoveIt~2 planning against them. On top of that sits a
+hardware path that talks to the robot's own ROS~1 Noetic master through a bridge,
+and that path has moved a real arm --- under supervision, in dated sessions.
+
+Baxter shipped in 2012 with a ROS~1 Groovy/Indigo SDK. Rethink Robotics closed in
+2018 and there is no vendor ROS~2 support, so anything running Baxter on Jazzy is
+reconstructing the command path from the robot's wire protocol outward. That is
+what this workspace does, and it is why the hardware chapters read as carefully as
+they do: nothing here is a supported vendor path.
+
+\section{How to read the support claims}
+
+Every capability statement in this manual falls into one of three categories, and
+the manual is written so you can always tell which:
+
+\begin{itemize}
+  \item \textbf{Passed} --- a gate ran and its evidence is recorded. Simulation
+    gates run in CI on every push.
+  \item \textbf{Passed, supervised} --- it worked on one physical robot, on a named
+    date, with a person holding the e-stop. This is not general support.
+  \item \textbf{Deferred} or \textbf{not measured} --- said plainly rather than
+    left to inference.
+\end{itemize}
+
+\begin{safetybox}[The evidence base, stated once]
+Every hardware claim in this manual comes from \emph{one} Baxter, driven under
+supervision, on four dated occasions: 2026-07-22 (bridge and interlocks),
+2026-07-24 (first supervised motion, first MoveIt execution), and 2026-07-25
+(speed characterisation and a MoveIt re-run). Sustained duty, gripper commands,
+and any second robot are unmeasured. Do not read this manual as evidence that
+Baxter is generally supported on ROS~2.
+\end{safetybox}
+
+The canonical machine-readable version of this is
+\texttt{docs/support\_matrix.md} in the repository; if that file and this manual
+ever disagree, the file wins, because CI checks it and nothing checks prose.
+
+\section{What works}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lllX@{}}
+\toprule
+\textbf{Profile} & \textbf{Status} & \textbf{Chapter} & \textbf{Notes} \\
+\midrule
+Gazebo sim & passed & \ref{ch:sim} & Both arms, 17 joint states, reversible motion. \\
+Gazebo + RViz & passed & \ref{ch:sim} & RobotModel/TF profile. \\
+MoveIt~2 sim & passed & \ref{ch:moveit} & OMPL, single- and dual-arm groups. \\
+MoveIt RViz & passed & \ref{ch:moveit} & MotionPlanning panel, IK markers. \\
+Hardware bridge & supervised & \ref{ch:bridge} & 2026-07-22. \\
+Supervised motion & supervised & \ref{ch:hwmotion} & 2026-07-24; speed limits 2026-07-25. \\
+MoveIt on hardware & supervised, \emph{limited} & \ref{ch:hwmotion} & Left arm aborts most goals at default speed. \\
+Grippers, cameras, Zenoh & deferred & --- & No gate requires them yet. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{What this manual will not tell you}
+
+It does not contain raw safety-topic publishing or hardware enable commands.
+Those exist in the repository's operational runbook, behind procedures that
+assume a supervised session and an e-stop within reach. A manual that teaches
+someone to energise a 2-metre dual-arm robot from a code snippet is a manual that
+has misjudged its audience.
+
+It also does not document the Rethink Intera manufacturing workflow --- task
+training, vacuum grippers, Modbus, the factory pick-and-place tooling. That is a
+different product built on the same hardware. If you have a manufacturing Baxter
+and want to train pick-and-place tasks by demonstration, this workspace is not
+what you want.
+
+\section{Layout}
+
+Chapter~\ref{ch:platform} covers the robot itself: joints, limits, and the
+concepts the rest of the manual assumes. Chapters~\ref{ch:install}
+to~\ref{ch:moveit} are the simulation path, which needs no robot and is where
+anyone should start. Chapters~\ref{ch:bridge} and~\ref{ch:hwmotion} are the
+hardware path. Chapter~\ref{ch:verify} is how to check that a change did not break
+anything, without a robot. The appendices are the condensed command sheet and the
+numeric tables.

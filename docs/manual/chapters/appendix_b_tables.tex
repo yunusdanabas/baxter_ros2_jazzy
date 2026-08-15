@@ -1,0 +1,124 @@
+\chapter{Reference tables}
+\label{app:tables}
+
+\section{Joint limits}
+
+Transcribed from \texttt{baxter\_description/urdf/baxter\_base/baxter\_base.urdf.xacro}.
+Left and right carry identical limits, so one table serves both arms. Prefix with
+\texttt{left\_} or \texttt{right\_}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Suffix} & \textbf{Segment} & \textbf{Lower (rad)} & \textbf{Upper (rad)} & \textbf{Max vel (rad/s)} \\
+\midrule
+\texttt{s0} & shoulder roll   & $-1.70167993878$ & $1.70167993878$ & 1.5 \\
+\texttt{s1} & shoulder pitch  & $-2.147$         & $1.047$         & 1.5 \\
+\texttt{e0} & upper-arm roll  & $-3.05417993878$ & $3.05417993878$ & 1.5 \\
+\texttt{e1} & elbow pitch     & $-0.05$          & $2.618$         & 1.5 \\
+\texttt{w0} & wrist roll      & $-3.059$         & $3.059$         & 4.0 \\
+\texttt{w1} & wrist pitch     & $-1.57079632679$ & $2.094$         & 4.0 \\
+\texttt{w2} & wrist roll      & $-3.059$         & $3.059$         & 4.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The parked pose puts \texttt{s1} at approximately $-2.175$\,rad, outside this
+table. That is expected and is why the shim refuses to move a tucked robot.
+
+\section{Shim parameters}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}llX@{}}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\texttt{side} & \texttt{left} & Which arm this instance serves. \\
+\texttt{mock\_mode} & \texttt{false} & Validate without publishing commands. \\
+\texttt{speed\_ratio} & 0.1 & Legacy scaling. Measured to have no effect; \texttt{duration} is the binding constraint. \\
+\texttt{command\_rate} & 100.0\,Hz & Interpolation and publish rate. \\
+\texttt{command\_timeout} & 0.2\,s & Robot-side timeout; commands must keep arriving. \\
+\texttt{max\_step\_rad\_per\_cycle} & 0.02 & Per-cycle clamp, i.e. 2.0\,rad/s. Unreachable in practice --- see below. \\
+\texttt{hold\_duration\_sec} & 1.0\,s & How long the final point keeps being commanded. \\
+\texttt{joint\_states\_stale\_sec} & 2.0\,s & Reject goals if state is older than this. \\
+\texttt{path\_tolerance\_rad} & 0.2 & Abort if a joint lags the published command by more than this. \\
+\texttt{stopped\_velocity\_tolerance} & 0.25 & Abort if still moving after the settle window. \\
+\texttt{goal\_time\_sec} & 0.1\,s & Settle window before the stopped-velocity check. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{notebox}
+\texttt{max\_step\_rad\_per\_cycle} looks like the speed limit and is not. At
+0.4\,s of lag per rad/s of commanded velocity, \texttt{path\_tolerance\_rad}
+$= 0.2$ aborts at about 0.5\,rad/s --- four times below the clamp. See
+Section~\ref{sec:speed}.
+\end{notebox}
+
+\section{Result codes}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}rlX@{}}
+\toprule
+\textbf{Code} & \textbf{Name} & \textbf{Meaning} \\
+\midrule
+$0$    & \texttt{SUCCESSFUL} & Goal completed and verified. \\
+$-4$   & \texttt{PATH\_TOLERANCE\_VIOLATED} & A joint lagged too far during motion. Arm holds. \\
+$-5$   & \texttt{GOAL\_TOLERANCE\_VIOLATED} & Still moving after the settle window. Arm holds. \\
+$-10$  & \texttt{START\_STATE\_IN\_COLLISION} & From \texttt{move\_group}; see the SRDF section. \\
+$-31$  & \texttt{NO\_IK\_SOLUTION} & Unreachable pose. \\
+$-100$ & (local) canceled & Cancelled by the client. Not a standard code. \\
+$-101$ & (local) aborted & Rejected or aborted by the safety gate. Not a standard code. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Topics and actions}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}llX@{}}
+\toprule
+\textbf{Name} & \textbf{Side} & \textbf{Role} \\
+\midrule
+\texttt{/joint\_states} & sim & 17 joints from the broadcaster. \\
+\texttt{/left\_arm\_controller/follow\_joint\_trajectory} & sim & Arm action. \\
+\texttt{/right\_arm\_controller/follow\_joint\_trajectory} & sim & Arm action. \\
+\texttt{/move\_action} & both & MoveIt planning and execution. \\
+\texttt{/robot/joint\_states} & hardware & Bridged. Two publishers; merge by name. \\
+\texttt{/robot/ref\_joint\_states} & hardware & Robot's own reference, $\approx$140\,Hz. \\
+\texttt{/robot/state} & hardware & \texttt{AssemblyState}; exactly one publisher required. \\
+\texttt{/robot/limb/*/joint\_command} & hardware & Position commands out. \\
+\texttt{/robot/limb/*/follow\_joint\_trajectory} & hardware & Shim actions. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Measured values}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}llX@{}}
+\toprule
+\textbf{Quantity} & \textbf{Value} & \textbf{Source} \\
+\midrule
+Sim goal tolerance & 0.02\,rad & Controller config; every client checks it. \\
+Best hardware tracking error & 0.0078\,rad & 2026-07-24, 0.117\,rad/s. \\
+MoveIt hardware settling & 0.0128\,rad & 2026-07-24, 31 waypoints. \\
+Lag coefficient & $\approx 0.4$\,s $\times v$ & 2026-07-25, three points. \\
+Practical speed ceiling & $\approx 0.5$\,rad/s & 2026-07-25, at tolerance 0.2. \\
+\texttt{/robot/joint\_states} rate & 138\,Hz & 2026-07-24 (bridge sees $\approx$100). \\
+\texttt{/robot/ref\_joint\_states} rate & 140\,Hz & 2026-07-24. \\
+SRDF collision pairs & 54 & Checked in CI. \\
+Dry-run cases & 25 & Checked in CI. \\
+\bottomrule
+\end{tabularx}
+\end{table}

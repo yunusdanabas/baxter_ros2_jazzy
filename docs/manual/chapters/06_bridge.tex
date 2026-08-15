@@ -1,0 +1,127 @@
+\chapter{The hardware bridge}
+\label{ch:bridge}
+
+\begin{safetybox}[Read this before the rest of the chapter]
+Everything from here on can move a two-metre dual-arm robot. The operational
+procedure --- network setup, sonar, enable, untuck, abort --- lives in the
+repository's hardware runbook and command sheet, and assumes a supervised session
+with the e-stop in hand. This chapter explains how the software works and why;
+it is not a substitute for the runbook.
+\end{safetybox}
+
+\section{Shape of the problem}
+
+Baxter runs a ROS~1 Noetic master. ROS~2 Jazzy cannot talk to it. The conventional
+answer is \texttt{ros1\_bridge} on a host with both distributions installed, which
+means maintaining a Noetic environment on Ubuntu 24.04 --- a container, in
+practice, and a five-gigabyte one.
+
+This workspace takes a different route. \texttt{scripts/py\_bridge.py} is a
+pure-Python ROS~1 client: XML-RPC to the master, raw TCPROS to peers, no
+\texttt{rospy} and no ROS~1 installation anywhere. It runs on the same laptop as
+the ROS~2 side.
+
+\begin{figure}[h]
+\centering
+\resizebox{\linewidth}{!}{\input{figures/architecture}}
+\caption{The hardware command path. The bridge is a ROS~1 protocol client, not a
+ROS~1 installation; the shim is where every safety decision is made.}
+\label{fig:arch}
+\end{figure}
+
+\subsection{Why this is smaller than it sounds}
+
+Subscribing to a ROS~1 topic requires negotiating a TCPROS connection, and the
+handshake includes an MD5 sum of the message definition. The bridge answers
+\texttt{"md5sum": "*"} --- a wildcard --- on the subscribe side. The master accepts
+it, so \emph{receiving} a new message type needs no MD5 table and no message
+definition, only code that can interpret the payload bytes. That is why adding a
+topic is usually a dozen lines.
+
+Publishing is not symmetric. \texttt{rosbag} records whatever the publisher
+advertised, so a wildcard MD5 produced recordings that could not be deserialised
+afterwards --- our own data, unreadable. The publisher side now answers with the
+real MD5 and message definition for the types it publishes. Unlisted types still
+fall back to the wildcard and still work on the wire; they just do not record
+usefully.
+
+\section{The action shim}
+
+\texttt{FollowJointTrajectory} is what MoveIt and the example clients speak. The
+robot does not: it accepts position commands on \texttt{joint\_command} and
+expects them to keep arriving. The shim bridges that gap, one instance per arm,
+and is where every safety decision lives.
+
+\begin{figure}[h]
+\centering
+\resizebox{0.92\linewidth}{!}{\input{figures/safety_gate}}
+\caption{What a goal has to pass before the arm moves. The 25 cases in
+\texttt{dry\_run\_test} are the executable form of this diagram, and run in CI on
+every push.}
+\label{fig:gate}
+\end{figure}
+
+Once a goal is accepted, the shim interpolates it at 100\,Hz and publishes
+position commands for as long as the goal is active. Because
+\texttt{joint\_command} has a 0.2\,s timeout, holding a position means continuing
+to command it --- so the shim keeps commanding the final point for
+\texttt{hold\_duration\_sec} after the trajectory ends rather than falling silent
+and letting the arm sag into gravity compensation.
+
+\subsection{Tolerances}
+
+Two checks run during motion, both taken from the values the legacy Rethink
+trajectory action server actually shipped enabled
+(\texttt{PositionJoint\-Trajectory\-Action\-Server}):
+
+\begin{itemize}
+  \item \texttt{path\_tolerance\_rad} (0.2): abort if a joint lags the command
+    actually published by more than this. Note \emph{published}, not the raw
+    interpolated setpoint --- comparing against a setpoint the shim never sent
+    would blame the arm for the shim's own clamping.
+  \item \texttt{stopped\_velocity\_tolerance} (0.25): after the final point has
+    been held for \texttt{goal\_time\_sec}, abort if a joint is still moving
+    faster than this.
+\end{itemize}
+
+Both \emph{hold} rather than stop, and they hold the \emph{measured} pose. An arm
+lagging its setpoint is not necessarily an unsafe arm --- it may simply be blocked
+--- and continuing to command a position it cannot reach would drive it harder
+into whatever is blocking it.
+
+\subsection{Distinguishing the failure modes}
+
+\texttt{control\_msgs} has standard codes for tolerance failures
+(\texttt{PATH\_TOLERANCE\_VIOLATED} $=-4$, \texttt{GOAL\_TOLERANCE\_VIOLATED}
+$=-5$) and the shim uses them. It has no code for "cancelled" or "aborted by
+safety gate", so the shim uses distinct negative values ($-100$, $-101$) rather
+than leaving them at zero. A client that only reads \texttt{error\_code} must not
+be able to mistake a safety abort for success.
+
+\section{The safety gate}
+
+\texttt{baxter\_safety\_check} reads \texttt{/robot/state} and reports whether
+motion is permissible. One of its checks is less obvious than the rest: it
+requires that \emph{exactly one} node publishes \texttt{/robot/state}.
+
+That rule came from an incident. A mock robot left running from an earlier test
+published a cheerful "safe" state alongside the real, disabled robot. A gate that
+samples the latest message cannot tell which robot it is reading, and it went
+unnoticed for about fifteen minutes. Counting publishers is the fix; the
+hardware bringup launch also refuses to start if the mock is running.
+
+\section{What still needs the legacy container}
+
+Almost nothing. Bring-up, the interlock tests, supervised motion, tolerance work,
+MoveIt and shutdown all run container-free. The exception is untucking.
+
+Tucked arms sit outside the URDF limit table
+(Section~\ref{ch:platform}), so the shim rejects that pose by design --- the same
+guard rail that makes the workspace refuse to move while tucked. A container-free
+untuck would mean hand-publishing joint commands \emph{outside the safety
+envelope}, with collision avoidance suppressed, for a large whole-arm motion.
+
+The honest answer is to keep the legacy tool for that one step. The alternative
+--- relaxing the shim's limits behind an explicit opt-in so the untuck runs through
+the validated path --- is the better long-term design, but it weakens a guard rail
+that has already proved useful, and it must never be the default.

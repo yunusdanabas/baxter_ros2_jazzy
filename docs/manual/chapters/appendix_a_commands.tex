@@ -1,0 +1,114 @@
+\chapter{Command sheet}
+\label{app:commands}
+
+Condensed from \texttt{docs/sim\_test\_commands.md}, which is the maintained
+version. Nothing here needs a robot.
+
+\section{Build}
+
+\begin{lstlisting}
+conda deactivate                       # if any env is active
+which python3                          # want /usr/bin/python3
+rm -rf build install log
+source /opt/ros/jazzy/setup.bash
+colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
+source install/setup.bash
+\end{lstlisting}
+
+\section{Hardware-free gates}
+
+\begin{lstlisting}
+bash scripts/sim_smoke.sh gates
+\end{lstlisting}
+
+Or individually:
+
+\begin{lstlisting}
+grep -RIn '@example\.com' src --include='package.xml' SECURITY.md CODE_OF_CONDUCT.md
+python3 -m compileall -q src/baxter_bringup src/baxter_gz_sim \
+    src/baxter_moveit_config src/baxter_examples src/baxter_hardware_bridge
+ruff check --select F src scripts --exclude src/baxter_common_ros2
+colcon test --base-paths src --packages-select baxter_examples
+colcon test-result --verbose
+ros2 run baxter_hardware_bridge dry_run_test          # OVERALL: PASS, 25 cases
+ros2 run xacro xacro src/baxter_gz_sim/urdf/baxter_gz_control.urdf.xacro > /tmp/b.urdf
+check_urdf /tmp/b.urdf
+\end{lstlisting}
+
+\texttt{ruff} is not a ROS package and \texttt{rosdep} will not install it:
+\texttt{pipx install ruff}.
+
+\section{Gazebo}
+
+Terminal 1:
+
+\begin{lstlisting}
+ros2 launch baxter_gz_sim sim_rviz.launch.py headless:=false
+\end{lstlisting}
+
+Terminal 2:
+
+\begin{lstlisting}
+ros2 control list_controllers                          # 3 active
+ros2 topic echo /joint_states --once                   # 17 joints
+ros2 launch baxter_examples sim_tiny_trajectory.launch.py
+ros2 run baxter_examples sim_tiny_trajectory --ros-args \
+    -p use_sim_time:=true -p joint:=e1
+ros2 run baxter_examples sim_tiny_trajectory --ros-args \
+    -p use_sim_time:=true -p cancel_after_sec:=1.0
+\end{lstlisting}
+
+\section{MoveIt}
+
+Terminal 1 (stop the previous launch first):
+
+\begin{lstlisting}
+ros2 launch baxter_moveit_config sim_moveit_rviz.launch.py headless:=false
+\end{lstlisting}
+
+Terminal 2:
+
+\begin{lstlisting}
+ros2 action list                                       # /move_action
+ros2 run baxter_examples moveit_left_tiny
+ros2 run baxter_examples moveit_tiny --ros-args -p group:=right_arm
+ros2 run baxter_examples moveit_tiny --ros-args -p group:=both_arms
+ros2 run baxter_examples moveit_pose --ros-args -p group:=left_arm -p delta_z:=0.05
+ros2 run baxter_examples ik_service_client --ros-args -p limb:=left
+ros2 run baxter_examples ik_service_client --ros-args -p limb:=left -p x:=9.0
+ros2 run baxter_examples moveit_tiny --ros-args -p cancel_after_sec:=1.0
+\end{lstlisting}
+
+The unreachable IK query must exit non-zero.
+
+\section{Teardown}
+
+One Ctrl+C per launch, then:
+
+\begin{lstlisting}
+pgrep -a -f 'gz sim|ros_gz_bridge|move_group|rviz2|robot_state_publisher|ros2_control_node'
+\end{lstlisting}
+
+No output is the pass. Gazebo exiting $-2$ is expected; a surviving process is a
+gate failure.
+
+\section{Expected output tokens}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+\textbf{Check} & \textbf{Expected} \\
+\midrule
+Publish hygiene & no output \\
+Dry run & \texttt{OVERALL: PASS}, 25 cases \\
+Unit tests & \texttt{16 tests, 0 errors, 0 failures} \\
+SRDF & \texttt{acm\_pairs=54} \\
+Motion & \texttt{max\_error} $\le 0.02$\,rad, every arm and direction \\
+Direct cancel & \texttt{Controller goal canceled; holding position} \\
+MoveIt cancel & \texttt{MoveGroup goal canceled; holding position} \\
+Unreachable IK & \texttt{INVALID POSE}, exit 1 \\
+\bottomrule
+\end{tabularx}
+\end{table}

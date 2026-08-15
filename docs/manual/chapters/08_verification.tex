@@ -1,0 +1,77 @@
+\chapter{Verification}
+\label{ch:verify}
+
+Everything in this chapter runs without a robot.
+
+\section{One command}
+
+\begin{lstlisting}
+bash scripts/sim_smoke.sh          # gates + gazebo + moveit
+bash scripts/sim_smoke.sh gates    # no Gazebo, no GPU
+\end{lstlisting}
+
+It exits zero only if every check passed, and prints its log directory otherwise.
+The full run takes about four minutes.
+
+The script asserts \emph{numbers}, not just exit codes. A client can exit zero
+having moved the wrong joint, or having printed nothing at all, so every
+\texttt{max\_error} is parsed and compared, a minimum count of verified lines is
+required, and the exact cancellation log strings must appear.
+
+\begin{notebox}[Teardown is part of the test]
+After each launch the script sends one \texttt{SIGINT} and then fails if any
+Gazebo, bridge, controller, \texttt{robot\_state\_publisher}, \texttt{move\_group}
+or RViz process survives. It never escalates to \texttt{SIGKILL} to make the check
+pass --- that would hide precisely the defect being looked for. Leftovers from a
+previous run also look identical to a teardown failure in the next one, which is
+why the script refuses to start if a simulation is already running.
+\end{notebox}
+
+\section{What each gate protects}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+\textbf{Check} & \textbf{The failure it exists to catch} \\
+\midrule
+Publish hygiene & A placeholder contact address shipping in a release. \\
+\texttt{compileall} & Syntax errors in files no test imports. \\
+\texttt{ruff --select F} & Unused imports and undefined names. Neither compilation nor import checks notice an unused import; nine of them once survived a refactor because nothing looked. \\
+\texttt{colcon test} & The joint-limit selection logic, which is branchy and otherwise only exercised by a full simulation run. \\
+\texttt{dry\_run\_test} & All 25 shim safety cases, without a robot. \\
+\texttt{check\_urdf} & A model that expands but is not a valid tree. \\
+SRDF matrix & The 54-pair collision matrix and the two hand-added pairs, whose loss only manifests on hardware. \\
+Cleanup-handler AST guard & A cancel that raises inside \texttt{except BaseException} and replaces the exception \texttt{main()} dispatches on, turning Ctrl-C into a misleading error. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{What stays manual}
+
+The RViz MotionPlanning panel. It has to actually load: no
+\texttt{Exception caught while processing action 'loadRobotModel'}, a populated
+planner dropdown rather than \texttt{NO PLANNING LIBRARY LOADED}, a 6-DOF
+interactive marker on each gripper, and no \texttt{No robot state or robot model
+loaded}. Automating that costs more than it catches; a person looking at the
+panel for ten seconds is the cheaper check.
+
+\begin{safetybox}[If all four symptoms appear at once]
+Check your locale. Qt calls \texttt{setlocale(LC\_ALL, "")} before
+\texttt{rclcpp::init}, so under a comma-decimal locale rcl parses every double
+parameter as a string and \texttt{loadRobotModel} dies. The MoveIt launch pins
+\texttt{LC\_NUMERIC=C} for the RViz node; if you launch RViz another way, set it
+yourself.
+\end{safetybox}
+
+\section{Continuous integration}
+
+CI runs the hardware-free set on every push: publish hygiene, build,
+compile/import, the cleanup-handler guard, \texttt{ruff}, the unit tests, the
+dry run, URDF expansion, and the static MoveIt and controller-config checks. It
+installs no ROS~1, no robot-network tooling, and no Zenoh.
+
+It deliberately does not run Gazebo. A full simulation needs a GUI-capable runner
+and is slow and flaky in CI; the manual smoke and \texttt{sim\_smoke.sh} cover it
+locally, and local teardown remains a required gate before any release.

@@ -1,0 +1,46 @@
+% The seven arm joints in chain order, with the URDF limits the shim enforces.
+% Values from follow_joint_trajectory_shim.py JOINT_LIMITS, transcribed from
+% baxter_description/urdf/baxter_base/baxter_base.urdf.xacro.
+\begin{tikzpicture}[
+  font=\small,
+  j/.style={draw, circle, minimum size=9mm, inner sep=0pt, fill=notebg,
+            draw=noterule, font=\footnotesize\ttfamily},
+  seg/.style={-{Stealth[length=2mm]}, thick, draw=coderule},
+  lim/.style={font=\scriptsize, align=center, text=comment},
+  grp/.style={font=\scriptsize\bfseries, text=noterule},
+]
+
+\node[j] (s0) at (0,0) {s0};
+\node[j] (s1) at (2.1,0) {s1};
+\node[j] (e0) at (4.2,0) {e0};
+\node[j] (e1) at (6.3,0) {e1};
+\node[j] (w0) at (8.4,0) {w0};
+\node[j] (w1) at (10.5,0) {w1};
+\node[j] (w2) at (12.6,0) {w2};
+
+\foreach \a/\b in {s0/s1, s1/e0, e0/e1, e1/w0, w0/w1, w1/w2}
+  \draw[seg] (\a) -- (\b);
+
+\node[left=3mm of s0, align=right, font=\footnotesize] {torso\\mount};
+\node[right=3mm of w2, align=left, font=\footnotesize] {gripper};
+
+\node[lim, below=3mm of s0] {$\pm 1.702$\\1.5\,rad/s};
+\node[lim, below=3mm of s1] {$-2.147 \ldots 1.047$\\1.5\,rad/s};
+\node[lim, below=3mm of e0] {$\pm 3.054$\\1.5\,rad/s};
+\node[lim, below=3mm of e1] {$-0.05 \ldots 2.618$\\1.5\,rad/s};
+\node[lim, below=3mm of w0] {$\pm 3.059$\\4.0\,rad/s};
+\node[lim, below=3mm of w1] {$-1.571 \ldots 2.094$\\4.0\,rad/s};
+\node[lim, below=3mm of w2] {$\pm 3.059$\\4.0\,rad/s};
+
+\node[grp] at (1.05,0.95) {shoulder};
+\node[grp] at (5.25,0.95) {elbow};
+\node[grp] at (10.5,0.95) {wrist};
+
+\draw[decorate, decoration={brace, amplitude=3pt}, draw=noterule]
+  (-0.5,0.7) -- (2.6,0.7);
+\draw[decorate, decoration={brace, amplitude=3pt}, draw=noterule]
+  (3.7,0.7) -- (6.8,0.7);
+\draw[decorate, decoration={brace, amplitude=3pt}, draw=noterule]
+  (7.9,0.7) -- (13.1,0.7);
+
+\end{tikzpicture}

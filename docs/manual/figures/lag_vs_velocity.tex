@@ -1,0 +1,41 @@
+% Measured on BR-01, 2026-07-25 (I20). Three points, one straight line, and the
+% reason path_tolerance_rad is a speed limit rather than a safety margin.
+% Source: docs/hardware_day_plan.md P4a escalation table.
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.82\linewidth, height=6.2cm,
+  xlabel={commanded velocity (rad/s)},
+  ylabel={peak tracking lag (rad)},
+  xmin=0, xmax=1.1, ymin=0, ymax=0.46,
+  grid=major, grid style={coderule!60},
+  legend pos=north west,
+  legend style={font=\scriptsize, draw=coderule},
+  label style={font=\small}, tick label style={font=\scriptsize},
+]
+
+% lag = 0.4 s * velocity -- the arm runs a constant time behind its setpoint.
+\addplot[domain=0:1.1, samples=2, thick, noterule, dashed]
+  {0.4*x};
+\addlegendentry{$\mathrm{lag} \approx 0.4\,\mathrm{s} \times v$}
+
+% The tolerance that stops the move.
+\addplot[domain=0:1.1, samples=2, thick, warnrule]
+  {0.2};
+\addlegendentry{\texttt{path\_tolerance\_rad} $=0.2$}
+
+\addplot[only marks, mark=*, mark size=2.2pt, black]
+  coordinates {(0.12,0.037) (0.23,0.094)};
+\addlegendentry{completed}
+
+\addplot[only marks, mark=triangle*, mark size=3.4pt, warnrule]
+  coordinates {(0.50,0.198)};
+\addlegendentry{aborted, \texttt{left\_s1}}
+
+\node[font=\scriptsize, align=left, anchor=west, text=comment]
+  at (axis cs:0.56,0.28) {shim clamp 2.0\,rad/s\\is off this chart:\\the tolerance\\binds 4$\times$ sooner};
+
+\draw[<-, thick, warnrule] (axis cs:0.50,0.198) -- (axis cs:0.62,0.13)
+  node[anchor=west, font=\scriptsize, text=warnrule] {0.202 vs 0.200};
+
+\end{axis}
+\end{tikzpicture}

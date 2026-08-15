@@ -1,0 +1,145 @@
+\chapter{Supervised motion and measured limits}
+\label{ch:hwmotion}
+
+This chapter reports what the robot actually did. Every number has a date and a
+session behind it.
+
+\section{What passed, and when}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}llX@{}}
+\toprule
+\textbf{Gate} & \textbf{Date} & \textbf{Result} \\
+\midrule
+Bridge, non-motion & 2026-07-22 & Bridged topics at steady rates; robot state readable. \\
+Action shims, interlocks & 2026-07-22 & Every malformed and unsafe goal rejected, zero motion. \\
+Supervised motion & 2026-07-24 & Both arms, out and back, worst tracking error 0.0078\,rad. \\
+MoveIt execution & 2026-07-24 & Planner success, 31 waypoints, settled 0.0128\,rad from target. \\
+Speed characterisation & 2026-07-25 & Path-tolerance ceiling found; see below. \\
+MoveIt re-run & 2026-07-25 & Mostly aborted on the left arm; see Section~\ref{sec:moveit-hardware}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+All of it on one robot, supervised. None of it establishes sustained duty,
+gripper commands, or behaviour on a second machine.
+
+\section{The speed ceiling}
+\label{sec:speed}
+
+The first supervised motion ran at 0.117\,rad/s against a shim clamp of
+2.0\,rad/s. That is a factor of seventeen of unused headroom, which means no
+tolerance figure in the workspace said anything at all about speed. The
+2026-07-25 session escalated deliberately, one step at a time, with the recorder
+running.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}rrrrl@{}}
+\toprule
+\textbf{Step} & \textbf{offset (rad)} & \textbf{duration (s)} & \textbf{rad/s} & \textbf{peak lag} \\
+\midrule
+1 & 0.35 & 3.0  & 0.12 & 0.037\,rad \\
+2 & 0.35 & 1.5  & 0.23 & 0.094\,rad \\
+3 & 0.50 & 1.0  & 0.50 & \textbf{0.198\,rad $\rightarrow$ abort} \\
+4 & 0.50 & 0.5  & 1.00 & not reached \\
+5 & 0.50 & 0.35 & 1.43 & not reached \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+It stopped at step 3 with \texttt{left\_s1 lags its setpoint by 0.202 rad (limit
+0.200)}. The arm then held to 0.0004\,rad over six seconds --- the abort-and-hold
+path worked exactly as designed.
+
+\begin{figure}[h]
+\centering
+\input{figures/lag_vs_velocity}
+\caption{Three measured points and one straight line. Lag is proportional to
+commanded velocity, so the path tolerance is a speed limit in disguise.}
+\label{fig:lag}
+\end{figure}
+
+The three points fall on a line: $\mathrm{lag} \approx 0.4\,\mathrm{s} \times v$.
+The arm runs a roughly constant \emph{time} behind its setpoint, which is what a
+series-elastic arm under a proportional controller does.
+
+That reframes the tolerance completely. \texttt{path\_tolerance\_rad} $= 0.2$
+divided by 0.4\,s gives about 0.5\,rad/s, and that is the practical speed ceiling
+of this workspace on this robot. The shim's 2.0\,rad/s per-cycle clamp is
+unreachable --- the tolerance binds four times sooner. Anybody reading the clamp
+as the speed limit is reading the wrong number.
+
+\begin{notebox}[Two things this does \emph{not} license]
+Do not tighten \texttt{path\_tolerance\_rad}: it is the speed limit, not a safety
+margin with slack in it. And do not raise it at a desk. Whether 0.3--0.4 is safe
+is an open experiment for a supervised session, not a default someone changes in
+a config file.
+\end{notebox}
+
+A related result from the same session: \texttt{speed\_ratio} had no measurable
+effect across 0.1, 0.2 and 0.3. The client's own interpolation is the binding
+constraint, so \texttt{duration} is the knob that changes speed.
+
+\section{MoveIt on hardware}
+\label{sec:moveit-hardware}
+
+MoveIt planned and executed on the robot on 2026-07-24. The 2026-07-25 re-run,
+with eleven goals per arm, went differently:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+\textbf{Arm} & \textbf{Completed} & \textbf{Aborted} & \textbf{Failure} \\
+\midrule
+Left  & 3 of 11 & 8 & \texttt{PATH\_TOLERANCE\_VIOLATED} on \texttt{left\_w0} / \texttt{left\_e0} \\
+Right & 9 of 11 & 2 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both arms were driven by the same \texttt{both\_arms} plans, and every left-arm
+abort landed at exactly the tolerance limit on a wrist or elbow joint. The
+mechanism is consistent with Section~\ref{sec:speed}: MoveIt plans at default
+velocity scaling, the wrist joints permit 4.0\,rad/s against the shoulder's 1.5,
+so a time-parameterised plan drives the wrists fastest and they are the first to
+exceed a lag budget that corresponds to about 0.5\,rad/s.
+
+\subsection{Workaround}
+
+On this robot, drive MoveIt at \texttt{Velocity Scaling: 0.1} in the
+MotionPlanning panel, and plan single-arm groups rather than \texttt{both\_arms}.
+
+\subsection{What is not yet known}
+
+Whether this is an asymmetric \emph{plan} or an asymmetric \emph{arm} is
+undecided. A \texttt{both\_arms} plan is not required to distribute motion
+symmetrically, so the left arm may simply have drawn the faster half. The
+decisive experiment is to command the same joint on each arm --- the
+\texttt{joint} parameter of the direct client exists for this --- at matched
+speeds, with the recorder running. The recorder was not running during the
+MoveIt re-run, which is precisely why the question is still open.
+
+\section{Joint states arrive from two publishers}
+\label{sec:jointstate-merge}
+
+\texttt{/robot/joint\_states} is published by two nodes: arm joints from one,
+gripper joints from another. A client keeping only the most recent message sees
+no arm joints in roughly a third of messages.
+
+The symptom is not a clean error. It looks like intermittent missing data,
+timeouts that come and go, and readings that are stale for no visible reason ---
+the sort of thing that gets blamed on the network or the robot. Clients on the
+hardware path merge positions by name across messages and tolerate an incomplete
+view rather than treating it as a fault.
+
+There is a related defect in the bridge worth knowing about before adding topics:
+its subscriber negotiates with only the \emph{first} publisher the master lists,
+so on a multi-publisher topic it silently receives a subset. Measured effect:
+\texttt{/robot/joint\_states} arrives at about 100\,Hz instead of its real
+138\,Hz, and gripper joint states never arrive at all.

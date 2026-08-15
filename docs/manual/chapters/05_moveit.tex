@@ -1,0 +1,121 @@
+\chapter{MoveIt 2}
+\label{ch:moveit}
+
+\section{Launching}
+
+\begin{lstlisting}
+# move_group against the simulated controllers
+ros2 launch baxter_moveit_config sim_moveit.launch.py headless:=true
+
+# and the MotionPlanning RViz panel
+ros2 launch baxter_moveit_config sim_moveit_rviz.launch.py headless:=false
+\end{lstlisting}
+
+Wait for \texttt{You can start planning now!} and a log line naming pipeline
+\texttt{ompl}. The launch is readiness-gated: it waits for the simulation to be
+up before starting \texttt{move\_group}, because a \texttt{move\_group} that
+loads before the controllers exist comes up without them and then fails to
+execute anything it plans.
+
+\begin{figure}[h]
+\centering
+\graphicsorplaceholder{figures/moveit_rviz.png}{0.92\linewidth}{the RViz
+MotionPlanning panel with the \texttt{both\_arms} group selected}
+\caption{The MotionPlanning panel loaded correctly: a populated planning group,
+Global Status Ok, and a 6-DOF interactive marker on each gripper. Note the
+Velocity Scaling of 0.30 --- that is the RViz default and is fine in simulation.
+On hardware it is too fast; see Section~\ref{sec:moveit-hardware}.}
+\label{fig:moveitrviz}
+\end{figure}
+
+\section{Groups}
+
+Five groups are defined: \texttt{left\_arm}, \texttt{right\_arm},
+\texttt{both\_arms}, and a hand group per side. Named states
+\texttt{left\_neutral} and \texttt{right\_neutral} match the simulation's initial
+joint values exactly --- CI asserts that equality, because a neutral pose that
+drifts from the model's start state makes every "return to neutral" a silent
+small motion.
+
+Planning uses OMPL with \texttt{RRTConnectkConfigDefault} as the default for all
+three arm groups.
+
+\section{The example clients}
+
+\begin{lstlisting}
+ros2 run baxter_examples moveit_left_tiny
+ros2 run baxter_examples moveit_tiny --ros-args -p group:=right_arm
+ros2 run baxter_examples moveit_tiny --ros-args -p group:=both_arms
+\end{lstlisting}
+
+Same contract as the direct client: fresh state, bounded reversible target,
+verified against a fresh reading, returned to start. Add
+\texttt{-p cancel\_after\_sec:=1.0} to exercise cancellation.
+
+\begin{notebox}[These clients refuse to touch hardware]
+\texttt{moveit\_left\_tiny} checks that \texttt{/move\_group} is running on
+simulated time and refuses to send a goal otherwise. It is deliberate: a sim
+example that could be pointed at a real robot by changing one launch file is a
+sim example waiting to move an arm nobody was watching. Hardware MoveIt execution
+is driven from the RViz panel by a person, as described in
+Section~\ref{sec:moveit-hardware}.
+\end{notebox}
+
+\section{Cartesian goals and IK}
+
+\begin{lstlisting}
+# absolute point
+ros2 run baxter_examples moveit_pose --ros-args \
+    -p group:=left_arm -p x:=0.55 -p y:=0.25 -p z:=0.15
+
+# relative nudge
+ros2 run baxter_examples moveit_pose --ros-args \
+    -p group:=left_arm -p delta_z:=0.05
+
+# plan only, do not execute
+ros2 run baxter_examples moveit_pose --ros-args \
+    -p group:=left_arm -p delta_z:=0.05 -p plan_only:=true
+\end{lstlisting}
+
+Targets are position-only against a 3\,cm tolerance sphere in \texttt{torso} by
+default, so gripper orientation is whatever IK picks. Absolute and relative forms
+are mutually exclusive. \texttt{plan\_only} is the form to use first whenever
+\texttt{move\_group} is attached to anything that can move.
+
+For pure IK queries without motion:
+
+\begin{lstlisting}
+ros2 run baxter_examples ik_service_client --ros-args -p limb:=left
+ros2 run baxter_examples ik_service_client --ros-args -p limb:=left -p x:=9.0
+\end{lstlisting}
+
+The second is deliberately unreachable and must exit non-zero with
+\texttt{INVALID POSE}. A solver that never reports failure is not a solver, and
+the verification script asserts that failure explicitly.
+
+\section{The collision matrix}
+
+\texttt{config/baxter.srdf} carries exactly 54 \texttt{disable\_collisions} pairs.
+That is sparse for a robot this size, and two of those pairs were added by hand:
+
+\begin{center}
+\texttt{left\_upper\_elbow} $\leftrightarrow$ \texttt{left\_upper\_shoulder}\\
+\texttt{right\_upper\_elbow} $\leftrightarrow$ \texttt{right\_upper\_shoulder}
+\end{center}
+
+Those links are two apart in the chain and graze by about 1.7\,mm in the pose the
+untuck tool leaves the robot in. Without the pairs disabled, \texttt{move\_group}
+returns $-10$ \texttt{START\_STATE\_IN\_COLLISION} and refuses to plan from the
+robot's own resting pose.
+
+The MoveIt Setup Assistant cannot rediscover them. Its sampling does not converge
+for this model --- runs from ten thousand to two million trials produced matrices
+between 263 and 311 pairs that disabled head, gripper and screen pairs that should
+not be disabled, while still missing these two. So a regenerated matrix is a
+regression, and the checked-in one stays.
+
+\begin{safetybox}[If you regenerate the SRDF]
+Run \texttt{scripts/check\_srdf.py diff OLD NEW} before and after. CI asserts
+both pairs are present and that the total is exactly 54; the check exists because
+this failure only shows up on hardware, at the moment you most want to plan.
+\end{safetybox}

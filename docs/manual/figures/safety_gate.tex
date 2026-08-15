@@ -1,0 +1,43 @@
+% What the shim checks before a goal is allowed to move the arm.
+% Transcribed from follow_joint_trajectory_shim.py; the 25 dry_run_test cases
+% are the executable version of this diagram.
+\begin{tikzpicture}[
+  font=\small, node distance=5.5mm,
+  stepbox/.style={draw, rounded corners=2pt, align=center, text width=52mm,
+               minimum height=7mm, inner sep=3pt, fill=codebg, draw=coderule},
+  dec/.style={draw, diamond, aspect=2.6, align=center, inner sep=1pt,
+              text width=34mm, font=\footnotesize, fill=notebg, draw=noterule},
+  bad/.style={draw, rounded corners=2pt, align=center, fill=warnbg,
+              draw=warnrule, font=\footnotesize, text width=30mm, inner sep=3pt},
+  ok/.style={draw, rounded corners=2pt, align=center, fill=white,
+             draw=string, font=\footnotesize, text width=30mm, inner sep=3pt},
+  flow/.style={-{Stealth[length=2mm]}, thick},
+]
+
+\node[stepbox] (goal) {Goal received};
+\node[dec, below=of goal] (names)  {joint names\\match this arm?};
+\node[dec, below=of names] (counts) {point sizes\\consistent?};
+\node[dec, below=of counts] (limits) {positions inside\\URDF limits?};
+\node[dec, below=of limits] (vel) {segment velocity\\within limits?};
+\node[dec, below=of vel] (fresh) {joint states fresh\\($<2$\,s)?};
+\node[dec, below=of fresh] (state) {exactly one\\\ttfamily/robot/state\\publisher?};
+\node[dec, below=of state] (enabled) {robot enabled,\\not stopped, no error?};
+\node[ok, below=of enabled] (accept) {ACCEPT\\\scriptsize interpolate at 100\,Hz};
+
+\foreach \a/\b in {goal/names, names/counts, counts/limits, limits/vel,
+                   vel/fresh, fresh/state, state/enabled, enabled/accept}
+  \draw[flow] (\a) -- (\b);
+
+\node[bad, right=14mm of names]   (r1) {REJECT\\\scriptsize bad joint names};
+\node[bad, right=14mm of counts]  (r2) {REJECT\\\scriptsize malformed point};
+\node[bad, right=14mm of limits]  (r3) {REJECT\\\scriptsize out of limits};
+\node[bad, right=14mm of vel]     (r4) {REJECT\\\scriptsize over velocity limit};
+\node[bad, right=14mm of fresh]   (r5) {REJECT\\\scriptsize stale state};
+\node[bad, right=14mm of state]   (r6) {REJECT\\\scriptsize contested state};
+\node[bad, right=14mm of enabled] (r7) {REJECT\\\scriptsize safety gate};
+
+\foreach \a/\b in {names/r1, counts/r2, limits/r3, vel/r4, fresh/r5,
+                   state/r6, enabled/r7}
+  \draw[flow] (\a) -- node[font=\scriptsize, above]{no} (\b);
+
+\end{tikzpicture}

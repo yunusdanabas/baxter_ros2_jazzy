@@ -1,0 +1,42 @@
+\documentclass[11pt,a4paper,oneside]{report}
+\input{preamble}
+
+\title{\Huge\bfseries Baxter on ROS 2 Jazzy\\[6pt]
+  \large A workspace manual: simulation first, hardware under supervision}
+\author{Yunus Danabas}
+\date{Version 0.2.0 --- \today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent
+This manual documents \texttt{baxter\_ros2\_jazzy}, a ROS~2 Jazzy workspace for the
+Rethink Robotics Baxter Research Robot. It covers the simulation path
+(Gazebo Harmonic, \texttt{ros2\_control}, MoveIt~2) end to end, and the hardware
+path as far as dated, supervised gates have actually taken it.
+
+Every hardware claim in this manual names the session that earned it. The
+evidence base is one Baxter, driven under supervision, on four dated occasions.
+That is a narrow base and the manual says so wherever it matters. Where something
+was measured, the number is given; where something was not measured, it is listed
+as not measured rather than assumed to work.
+\end{abstract}
+
+\tableofcontents
+
+\include{chapters/01_introduction}
+\include{chapters/02_platform}
+\include{chapters/03_installation}
+\include{chapters/04_simulation}
+\include{chapters/05_moveit}
+\include{chapters/06_bridge}
+\include{chapters/07_hardware_motion}
+\include{chapters/08_verification}
+
+\appendix
+\include{chapters/appendix_a_commands}
+\include{chapters/appendix_b_tables}
+
+\end{document}

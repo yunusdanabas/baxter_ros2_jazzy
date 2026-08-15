@@ -1,0 +1,87 @@
+\chapter{Installation}
+\label{ch:install}
+
+Nothing in this chapter needs a robot. The result is a workspace that runs the
+full simulation path.
+
+\section{Prerequisites}
+
+Ubuntu 24.04 Noble with ROS~2 Jazzy. The tested profile is exactly that
+combination; nothing else has passed a gate.
+
+\begin{lstlisting}
+sudo apt install -y \
+  ros-jazzy-desktop ros-jazzy-ros-gz ros-jazzy-gz-ros2-control \
+  ros-jazzy-ros2-control ros-jazzy-ros2-controllers \
+  ros-jazzy-moveit ros-jazzy-robot-state-publisher ros-jazzy-xacro \
+  ros-jazzy-joint-state-publisher-gui \
+  python3-colcon-common-extensions python3-rosdep python3-vcstool
+\end{lstlisting}
+
+\section{Source and the dependency pin}
+
+One external repository is imported, at a full commit SHA:
+
+\begin{lstlisting}
+git clone https://github.com/yunusdanabas/baxter_ros2_jazzy.git
+cd baxter_ros2_jazzy
+source /opt/ros/jazzy/setup.bash
+mkdir -p src
+vcs import src < repos/baxter_core.repos
+git -C src/baxter_common_ros2 rev-parse HEAD
+# expect: 678bfabea8c895b4134951a6c076217a90b9e0e6
+\end{lstlisting}
+
+That import brings the CentraleNantes \texttt{baxter\_common\_ros2} message and
+description packages. The pin is a full SHA rather than a branch on purpose: the
+robot description and message definitions determine wire compatibility with a
+physical robot, and a branch that moves underneath a hardware session is a defect
+waiting for the worst possible moment.
+
+If \texttt{src/baxter\_common\_ros2} already exists, verify the SHA rather than
+re-importing over local changes.
+
+\section{Build}
+
+\begin{lstlisting}
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
+source install/setup.bash
+\end{lstlisting}
+
+\texttt{--packages-skip baxter\_bridge} is not optional. That package links ROS~1
+libraries which do not exist on a clean Jazzy machine; it belongs on a bridge host
+with both distributions installed, and this workspace does not use it --- the
+hardware path uses a pure-Python bridge instead (Chapter~\ref{ch:bridge}).
+
+If the workspace or its underlay changes, remove \texttt{build/}, \texttt{install/}
+and \texttt{log/} before rebuilding, and never hand-edit generated setup files.
+
+\begin{safetybox}[The conda trap, which does not announce itself]
+If a conda or mamba environment is active, its \texttt{python3} comes first on
+\texttt{PATH}. \texttt{setuptools} bakes the active interpreter into the shebang
+of every installed console script at \emph{build} time, so the build succeeds and
+then every \texttt{ros2 run} fails at runtime with
+\texttt{No module named 'rclpy.\_rclpy\_pybind11'}, because \texttt{rclpy}'s C
+extension is built against the system interpreter.
+
+Check before building, not after:
+
+\begin{lstlisting}
+conda deactivate
+which python3      # want /usr/bin/python3
+\end{lstlisting}
+
+A successful build is not evidence that this is fine.
+\end{safetybox}
+
+\section{Verify}
+
+\begin{lstlisting}
+bash scripts/sim_smoke.sh gates
+\end{lstlisting}
+
+This runs the hardware-free checks: compile, lint, unit tests, the 25-case
+hardware-bridge dry run, URDF expansion, and the MoveIt collision-matrix check.
+It needs no Gazebo and no GPU. Chapter~\ref{ch:verify} describes what each check
+is actually protecting.
