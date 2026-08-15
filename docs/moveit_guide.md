@@ -1,6 +1,6 @@
 # MoveIt Sim Guide
 
-`baxter_moveit_config` is a MoveIt 2 profile for the Gazebo `ros2_control` arm controllers, and — via `hardware_moveit.launch.py` — for the hardware action shims. The sim profile is the default; the hardware one has planned and executed on a real Baxter under supervision (2026-07-24).
+`baxter_moveit_config` is a MoveIt 2 profile for the Gazebo `ros2_control` arm controllers, and — via `hardware_moveit.launch.py` — for the hardware action shims. The sim profile is the default; the hardware one has planned and executed on a real Baxter under supervision (2026-07-24), **with a large caveat about speed** — see *MoveIt on hardware: what actually happened* below before driving a robot from this panel.
 
 ## Scope
 
@@ -91,7 +91,7 @@ The checked-in launch passes the kinematics solvers and the OMPL pipeline to RVi
 
 The MotionPlanning display opens on the `both_arms` group with `Query Goal State` enabled and a 6-DOF interactive marker on each gripper; drag a marker to pose the arm through IK, then `Plan` and `Execute`. The Grid, RobotModel, and TF displays render alongside it.
 
-> **Only `Execute` and `Plan & Execute` move Gazebo.** Dragging a marker moves the orange goal-state ghost, and `Plan` replays the planned path on a loop (`Loop Animation: true`) — both are RViz-side previews that send nothing to the controllers, and both look like a moving robot while Gazebo sits still. If Gazebo is not moving, check `move_group` for `MoveGroupMoveAction: Received request`; no such line means RViz never sent anything. Motion is also slow by default at `Velocity Scaling: 0.30`.
+> **Only `Execute` and `Plan & Execute` move Gazebo.** Dragging a marker moves the orange goal-state ghost, and `Plan` replays the planned path on a loop (`Loop Animation: true`) — both are RViz-side previews that send nothing to the controllers, and both look like a moving robot while Gazebo sits still. If Gazebo is not moving, check `move_group` for `MoveGroupMoveAction: Received request`; no such line means RViz never sent anything. Motion is slow by default at `Velocity Scaling: 0.30`. **In sim that is fine; on hardware 0.30 is too fast** — `w0`'s URDF limit is 4.0 rad/s, and a plan that drives the wrists near it aborts against the 0.2 rad path tolerance. Use `0.1` on a robot, and read the hardware section below.
 
 > The RViz node is launched with `LC_NUMERIC=C`. Do not remove it. Qt switches the process locale before rcl parses the parameter files, and in a comma-decimal locale every double is read as a string, which kills `loadRobotModel` and empties this panel. See `known_issues.md`.
 
@@ -143,7 +143,13 @@ ros2 run baxter_examples moveit_pose --ros-args -p group:=left_arm -p x:=0.55 -p
 ros2 run baxter_examples moveit_pose --ros-args -p group:=left_arm -p delta_z:=0.05
 ```
 
-Targets are position-only against a 3 cm tolerance sphere in `torso` by default (`-p frame:=`), so gripper orientation is whatever IK picks. Absolute `x`/`y`/`z` and relative `delta_*` are mutually exclusive.
+Targets are position-only against a 3 cm tolerance sphere in `torso` by default (`-p frame:=`), so gripper orientation is whatever IK picks. Absolute `x`/`y`/`z` and relative `delta_*` are mutually exclusive. Widen or tighten the sphere with `-p position_tolerance:=`.
+
+Add `-p plan_only:=true` to plan and report the result **without executing** — the safe way to ask whether a target is reachable at all, and the only form to use first when `/move_group` is attached to hardware:
+
+```bash
+ros2 run baxter_examples moveit_pose --ros-args -p group:=left_arm -p delta_z:=0.05 -p plan_only:=true
+```
 
 Ask MoveIt for joint angles without moving anything — the ROS 2 stand-in for the ROS 1 `ik_service_client.py`, which used the robot-only `baxter_core_msgs/SolvePositionIK`:
 
@@ -246,6 +252,39 @@ on hardware.
 > kills `move_group` with exit -6 (I18 F21). `check_srdf.py` sends only the 14
 > arm joints for that reason. If `move_group` vanishes mid-session, look at the
 > last request before blaming the robot.
+
+## MoveIt on hardware: what actually happened
+
+Driven from the RViz MotionPlanning panel on 2026-07-25 (I20 F-F), planning
+mostly the `both_arms` group:
+
+| Arm | Goals | Succeeded | Aborted |
+|---|---|---|---|
+| left | 11 | 3 | **8** |
+| right | 11 | 9 | 2 |
+
+Every abort was `PATH_TOLERANCE_VIOLATED` **at exactly the limit** — −0.201,
+−0.200, 0.200, 0.202 — never a large excursion, and always on `left_w0` (5) or
+`left_e0` (3). `move_group` logged 8 × `CONTROL_FAILED`: one controller aborting
+takes the whole dual-arm execution down, so in every case the left arm ended the
+right arm's otherwise good trajectory.
+
+The cause is the speed coupling measured the same day: in-flight lag is linear in
+commanded velocity at ≈ 0.4 s of it, so `path_tolerance_rad` 0.2 is a ~0.5 rad/s
+ceiling — and MoveIt plans the wrists fast, because `w0`'s URDF limit is
+4.0 rad/s. Duration is not the explanation: one left goal ran 7 s and succeeded
+while others aborted 3–6 s in.
+
+What the data **cannot** settle is whether `left_w0` was *commanded* faster than
+`right_w0` (an asymmetric plan) or commanded the same and *tracked* worse (an
+asymmetric arm). No bag was recording during the RViz session. That is the open
+experiment: identical single-joint moves on `left_w0` and `right_w0`, same
+`offset` and `duration`, stepped up until each aborts, with the recorder on.
+`sim_tiny_trajectory` gained a `joint` parameter for exactly this.
+
+> **To use MoveIt on this robot today:** set `Velocity Scaling: 0.1`, and plan
+> the single-arm `left_arm` / `right_arm` groups rather than `both_arms`, so one
+> arm's lag cannot abort the other arm's trajectory.
 
 ## Diagnostic Scope
 

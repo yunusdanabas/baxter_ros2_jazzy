@@ -12,11 +12,11 @@ This repo is sim-first. Keep changes inside the profile they actually affect.
 | `sim_moveit_rviz` | passed, manual/local GUI |
 | default CI/devcontainer | passed, hardware-free |
 | `hardware_bridge` | passed, supervised (2026-07-22) |
-| supervised hardware motion | passed, supervised (2026-07-24, both arms) |
-| MoveIt on hardware | passed, supervised (2026-07-24) |
+| supervised hardware motion | passed, supervised (2026-07-24 I12; 2026-07-25 I20, both arms) |
+| MoveIt on hardware | passed **with limits**, supervised (2026-07-24/25; left arm aborts at default speeds — Velocity Scaling 0.1, single-arm groups) |
 | Zenoh/compatibility fallback | deferred |
 
-Do not claim hardware support from sim evidence, and do not widen a hardware claim past the session that earned it. The gates passed on one BR-01 at low speed; fast motion, sustained duty, grippers and a second robot are all unmeasured.
+Do not claim hardware support from sim evidence, and do not widen a hardware claim past the session that earned it. The gates passed on one BR-01; I20 characterised speed through the ~0.5 rad/s path-tolerance abort. Sustained duty, grippers, and a second robot remain unmeasured.
 
 ## Default Checks
 

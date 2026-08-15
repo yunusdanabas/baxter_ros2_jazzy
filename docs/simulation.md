@@ -97,6 +97,16 @@ fast the move is; the per-move log line reports the resulting rad/s. Shortening
 measured to have no effect, because the client's own interpolation is the binding
 constraint.
 
+`joint` (default `s1`) picks which arm joint moves; any of `s0 s1 e0 e1 w0 w1 w2`
+works, and the client refuses a joint it has no limit table for. Both arms always
+move the same joint, which is the point: on hardware, comparing the same joint
+left against right is what distinguishes an asymmetric *plan* from an asymmetric
+*arm*.
+
+```bash
+ros2 run baxter_examples sim_tiny_trajectory --ros-args -p use_sim_time:=true -p joint:=e1
+```
+
 Cancellation check:
 
 ```bash

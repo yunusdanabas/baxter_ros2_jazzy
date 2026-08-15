@@ -55,6 +55,7 @@ nmcli connection up "Wired connection 1"
 
 ```bash
 cd ~/baxter_ros2_jazzy
+export BAXTER_HOST=011412P0024.local   # required — scripts have no lab default
 source scripts/baxter_env.sh
 ```
 
@@ -66,7 +67,7 @@ robot. Do **not** set `ROS_DOMAIN_ID`. `LC_NUMERIC=C` is set for you.
 ## 2. Terminal 1 — bridge (leave running)
 
 ```bash
-cd ~/baxter_ros2_jazzy && source scripts/baxter_env.sh
+cd ~/baxter_ros2_jazzy && export BAXTER_HOST=011412P0024.local && source scripts/baxter_env.sh
 python3 scripts/py_bridge.py
 ```
 
@@ -408,15 +409,11 @@ Goal tolerance violated: left_s1 still moving at 0.xxx rad/s (limit 0.250 rad/s)
 `path_tolerance_rad` (0.2) and `stopped_velocity_tolerance` (0.25) are Rethink's
 own defaults, and both have now been measured against a real arm.
 
-> **Measured 2026-07-24: the concern was backwards, and 0.2 is about right.**
-> Neither fired. Worst *in-flight* lag, computed from the bag over the windows
-> where commands were actually streaming, is **0.0352 rad** — so 0.2 leaves a
-> 5.7× margin, an ordinary engineering one. Do not reach for
-> `-p path_tolerance_rad:=0.3`, and do **not** tighten to 0.05: that would leave
-> only 1.42× and false-trip on moves that currently succeed. See
-> `logs/I18_hardware_day.log.md` F22, which corrects the earlier F3 figure — that
-> one divided by the *settled* error, which is 4.5× smaller than the lag this
-> limit actually governs.
+> **I20 (2026-07-25): `path_tolerance_rad` is the speed limit.** At ~0.12 rad/s
+> lag was ~0.035 rad; lag ≈ 0.4 s × velocity, so 0.2 rad aborts near ~0.5 rad/s.
+> Do **not** tighten to 0.05 (that caps motion at ~0.12 rad/s). Raising to 0.3–0.4
+> is an open experiment, not a desk tweak. See `docs/hardware_runbook.md` and
+> `logs/I20_fast_motion_and_srdf.log.md`.
 
 Guard rail already proven: with the arms tucked (`s1=-2.175`, outside the
 `[-2.147, 1.047]` limit table) the script refuses to move and exits 1 —
@@ -437,8 +434,14 @@ ros2 run baxter_examples sim_tiny_trajectory --ros-args \
   -p cancel_after_sec:=1.0
 ```
 
-Expected: `Active trajectory canceled; controller is holding position`, then a
+Expected: `Controller goal canceled; holding position`, then a
 drift check on two later joint states. The arm must stop and hold, not fall.
+
+### 7c. Turning a capture into a tracking-lag number
+
+| Tool | What it does |
+|---|---|
+| `scripts/analyze_tracking_lag.py` | Reads a ROS 1 bag from the session and reports the worst **in-flight** absolute difference between commanded and measured position, per joint — the quantity `path_tolerance_rad` actually governs, not the post-settle `max_error` the client prints. Falls back to `/robot/ref_joint_states` for pre-F23 bags whose `joint_command` payload cannot be deserialised. This produced I20 F-A's numbers, so any speed claim has to be re-derived from it. Run it with the container's Python against a bag under `data/sessions/<date>/ros1/`. |
 
 ---
 

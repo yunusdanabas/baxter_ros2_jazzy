@@ -1,7 +1,41 @@
 # Known Issues
 
-Defects in the sim-first baseline, with what is and is not affected. No defect is currently
-open. Hardware scope and its limits are in `package_map.md` and `hardware_runbook.md`.
+Defects in the sim-first baseline, with what is and is not affected. One defect is currently
+open: MoveIt aborts most left-arm goals on hardware at default planning speeds (below).
+Hardware scope and its limits are in [support_matrix.md](support_matrix.md) and
+[hardware_runbook.md](hardware_runbook.md).
+
+## Open: MoveIt aborts most left-arm goals on hardware at default speeds
+
+**Status:** open, found 2026-07-25 (I20 F-F). Sim is unaffected.
+
+**Symptom.** Driven from the RViz MotionPlanning panel against the real robot,
+the left arm aborted 8 of 11 goals while the right completed 9 of 11 on the same
+`both_arms` plans. Every abort was `PATH_TOLERANCE_VIOLATED` at exactly the
+0.2 rad limit (−0.201, −0.200, 0.200, 0.202), always on `left_w0` (5 times) or
+`left_e0` (3). `move_group` logged 8 × `CONTROL_FAILED`, because one controller
+aborting takes the whole dual-arm execution down with it.
+
+**Affected.** Hardware only, via `hardware_moveit.launch.py`, at MoveIt's default
+`Velocity Scaling: 0.30`. Sim is unaffected — there is no tracking lag to violate
+the tolerance. Scripted single-joint moves through `sim_tiny_trajectory` are
+unaffected below ~0.5 rad/s.
+
+**Cause (partly understood).** In-flight lag is ≈ 0.4 s × commanded velocity, so
+`path_tolerance_rad` 0.2 is a ~0.5 rad/s speed ceiling, and MoveIt plans the
+wrists fast because `w0`'s URDF limit is 4.0 rad/s. What is *not* settled is why
+the left arm is worse: no bag was recording, so an asymmetric plan and an
+asymmetric arm are still both consistent with the data. I18 F10 found the
+opposite asymmetry on a different joint (right worse on `s1`), which suggests
+tracking quality is a property of the joint, not the arm.
+
+**Workaround.** `Velocity Scaling: 0.1`, and plan the single-arm `left_arm` /
+`right_arm` groups rather than `both_arms`.
+
+**Decisive experiment.** Identical single-joint moves on `left_w0` and
+`right_w0`, same `offset` and `duration`, stepped up until each aborts, with the
+ROS 1 recorder running. `sim_tiny_trajectory`'s `joint` parameter exists for
+this. Needs a supervised session.
 
 ## Resolved: MotionPlanning display failed to load its robot model
 

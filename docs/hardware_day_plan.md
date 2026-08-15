@@ -9,31 +9,16 @@ Background and safety: `docs/hardware_runbook.md`.
 list of concrete code improvements. Not a data archive — recordings are short and
 topic-scoped, taken only where a number is needed that cannot be read off the console.
 
-**Where we resume (next session, after 2026-07-25 desk work):** the command path is
-proven. The 2026-07-24 session cleared the enable blocker with `tuck_arms.py -u`,
-passed the I12 gate on both arms, and executed a MoveIt plan on the robot. The open
-questions are now about *speed*: every tracking number in this repo describes motion
-at 0.117 rad/s, against a shim clamp of 2.0 rad/s.
-
-The session order below is written for that. P3 is no longer a crux — it is a
-routine untuck — and the value is concentrated in P4a (fast motion) and P5.
-
-## Verified before the 2026-07-24 session
-
-| Check | Result |
-|---|---|
-| Robot reachable | `011412P0024.local` → `192.168.1.232`, via `enp4s0`, 0.36 ms RTT |
-| Robot baseline | `ready/enabled/stopped/error` all `False`, `estop_button: 0` — disabled, fault-free |
-| `dry_run_test` | 20/20 PASS (25/25 as of 2026-07-25) |
-| Shims under launch | all nodes up, no rclpy errors |
-| Recorders | both paths proven (full, and `TOPICS_RE`-scoped) |
-| `baxter-noetic:n07` | rebuilt on the **host** daemon; `enable_robot.py -s` works through it |
+**Where we resume:** I12 and I20 are done on BR-01 `011412P0024`. Open supervised
+experiments: raising `path_tolerance_rad` (0.3–0.4), and the left/right `w0`
+abort compare (see `hardware_test_commands.md`). P3 untuck is routine.
 
 ## Standing rules
 
-- **Source `scripts/baxter_env.sh` in every terminal.** It strips an active conda
-  install from `PATH`; without it `py_bridge.py` dies on `rclpy._rclpy_pybind11`.
-  Source it before `colcon build` too — see the runbook prerequisites.
+- **`export BAXTER_HOST=<robot-serial>.local` then source `scripts/baxter_env.sh`
+  in every terminal.** Scripts have no lab serial/IP default. The env script
+  strips an active conda install from `PATH`; without it `py_bridge.py` dies on
+  `rclpy._rclpy_pybind11`. Source it before `colcon build` too — see the runbook.
 - **Head sonar off for the whole session** (P1), re-checked after any robot reboot.
   With it off there is no proximity sensing, so the e-stop and human supervision are
   the only backstops.
@@ -53,9 +38,9 @@ routine untuck — and the value is concentrated in P4a (fast motion) and P5.
 | 4 | Scoped recorder, started per phase | `bash scripts/record_ros1.sh` / `record_ros2.sh` |
 
 Define `baxrun`/`baxtool` in terminal 3 (`hardware_test_commands.md` §6). They need the
-`baxter-noetic` image on the **host** daemon — if a prune removed it again, rebuild per
-`docker/local_image_inventory.md`; `docs/container_free_path.md` records what could
-replace the container and why the untuck currently cannot.
+`baxter-noetic` image on the **host** daemon — if a prune removed it again, rebuild it
+from the separate ROS 1 workspace that owns it. What still needs that image (and why
+untuck does) is summarised in `docs/hardware_runbook.md`.
 
 ---
 
@@ -114,7 +99,7 @@ Primary: `baxtool tuck_arms.py -u`.
 
 **Improvement hook:** if `tuck_arms.py -u` works where `enable_robot.py -e` fails, that
 20 Hz republish plus collision suppression belongs in our own enable path — see
-`container_free_path.md`.
+`docs/hardware_runbook.md` (Noetic image section).
 
 ## P4 — Supervised motion gate, I12 (~45 min)
 
@@ -128,15 +113,10 @@ Sheet §7, then §7b. Scoped recording on — this is where the tracking numbers
 **holds**, does not sag. A tolerance abort is not a failure — it routes to P5.
 **Abort:** anything unexpected → e-stop.
 
-## P4a — Fast motion, the open question (~45 min)
+## P4a — Fast motion — **characterised, do not re-run blind** (~45 min)
 
-**The most valuable unknown, and the reason for this session.** Everything measured
-so far ran at 0.117 rad/s against a 2.0 rad/s clamp, so no tolerance figure in this
-repo says anything about speed. `sim_tiny_trajectory` takes `duration` and `offset`
-as of 2026-07-25 (sheet §7).
-
-Escalate **one step at a time**, checking the arm between runs and keeping the
-scoped recorder on:
+Measured 2026-07-25 (I20). Kept because the escalation procedure is the reusable
+part; the answer itself is now settled.
 
 | Step | `offset` | `duration` | rad/s | measured max lag |
 |---|---|---|---|---|
@@ -146,21 +126,22 @@ scoped recorder on:
 | 4 | 0.50 | 0.5 | 1.00 | not reached |
 | 5 | 0.50 | 0.35 | 1.43 | not reached |
 
-**Run 2026-07-25, and it stopped at step 3** with
-`Path tolerance violated: left_s1 lags its setpoint by 0.202 rad (limit 0.200)`.
-The arm then held to 0.0004 rad over 6 s — the abort-and-hold path works.
+It stopped at step 3 with `Path tolerance violated: left_s1 lags its setpoint by
+0.202 rad (limit 0.200)`, then held to 0.0004 rad over 6 s — the abort-and-hold
+path works.
 
 The result is a straight line: **lag ≈ 0.4 s × commanded velocity.** The arm runs
 a constant time behind its setpoint, so `path_tolerance_rad` is a speed limit in
 disguise: 0.2 rad ÷ 0.4 s ≈ 0.5 rad/s. The 2.0 rad/s per-cycle clamp is
 unreachable — the tolerance binds four times sooner.
 
-Re-run these steps only if something changes that should move that line (control
-rate, speed_ratio semantics, a stiffer hold). Otherwise the curve is known, and
-the useful experiment is at the *other* end: what does raising
-`path_tolerance_rad` to 0.4 buy, and is the tracking still safe there?
+**Re-run this ladder only** if something changed that should move that line:
+control rate, `speed_ratio` semantics, or a stiffer hold. Otherwise spend the
+time on the open experiment at the other end — what raising `path_tolerance_rad`
+to 0.3-0.4 buys, and whether tracking is still safe there.
 
-**Stop escalating** on the first path-tolerance abort, visible stutter, or audible
+If you do escalate: one step at a time, recorder on, checking the arm between
+runs. **Stop** on the first path-tolerance abort, visible stutter, or audible
 change in the arm. **Abort to e-stop** on anything unexpected.
 
 ## P5 — Tolerance characterisation (~45 min)
@@ -170,16 +151,14 @@ desk-tuned here against a mock with no physics. Rather than only reacting to a t
 **measure** from the P4 capture: worst lag between `joint_command` and `joint_states`
 (cross-checked against `/robot/ref_joint_states`), and joint velocity at goal end.
 
-**Do not reach for `-p path_tolerance_rad:=0.3`.** F22 measured the real quantity:
-worst in-flight lag 0.0352 rad, a 5.7× margin at the current 0.2. A trip is
-therefore much more likely to be bridge backpressure (F8) than a tight tolerance —
-`ROS1Publisher.publish` can block up to 0.5 s inside the ROS 2 callback, which
-exceeds the robot's 0.2 s `joint_command_timeout` and shows up as growing error.
+**Do not tighten `path_tolerance_rad`.** I20 showed it *is* the speed limit
+(~0.5 rad/s at 0.2). Raising it to 0.3–0.4 is the open experiment for a future
+supervised session, not a desk default. A trip at low speed is still more likely
+bridge backpressure (F8) — `ROS1Publisher.publish` can block up to 0.5 s inside
+the ROS 2 callback, which exceeds the robot's 0.2 s `joint_command_timeout`.
 
 **Abort:** a trip on a move the arm visibly completed → stop commanding motion and
 capture for desk analysis rather than loosening the limit.
-**Improvement:** if the P4a numbers hold up, 0.15 is the most aggressive defensible
-tightening; anything below 0.15 needs data this session did not produce.
 
 ## P6 — Motion experiments, as far as they teach something
 
@@ -188,12 +167,12 @@ Escalate, checking the arm between steps, recording only the runs being compared
 1. **Cancel sweep** — `cancel_after_sec` 0.5, 1.0, 2.0. Skipped on 2026-07-24
    because the check itself was broken (F2); fixed 2026-07-25, so this is now
    worth running.
-2. ~~**Speed sweep** — `speed_ratio` 0.1 → 0.2 → 0.3.~~ **Done and closed:** the
-   ratio had no measurable effect (F9). Duration is the binding constraint, which
-   is what P4a exists for.
-3. **Gravity-comp observation** — enabled but uncommanded; how far does the arm drift?
-4. **`joint_command_timeout` transition**, supervised, once: stop the shims and watch
+2. **Gravity-comp observation** — enabled but uncommanded; how far does the arm drift?
+3. **`joint_command_timeout` transition**, supervised, once: stop the shims and watch
    the arm go from held to gravity-comp.
+
+A `speed_ratio` sweep is *closed*: 0.1 → 0.2 → 0.3 had no measurable effect (F9).
+Duration is the binding constraint — that is what P4a measured.
 
 Log one line per run: time, speed ratio, params, what the arm looked like.
 
@@ -214,6 +193,14 @@ settling 0.0128 rad from target. Re-run it this session because the bridge now
 publishes the robot's own `header.stamp` rather than bridge receive time — if the
 robot's clock and this laptop's disagree, MoveIt will discard states as stale.
 `py_bridge` warns when the skew exceeds 0.5 s; watch for that at bring-up.
+
+**Result 2026-07-25 (I20 F-F):** the staleness check passed — zero staleness
+complaints. The *motion* did not. Across 11 goals per arm the left arm aborted 8,
+all `PATH_TOLERANCE_VIOLATED` at exactly the limit on `left_w0`/`left_e0`, while
+the right completed 9 of 11 on the same `both_arms` plans. Use
+`Velocity Scaling: 0.1` and single-arm groups on this robot. The next session's
+job is the `left_w0` vs `right_w0` compare below, **with the recorder running** —
+it was not, which is why this is still undecided.
 
 ## P8 — Noetic harvest and bridge hygiene, no motion (~45 min)
 
@@ -244,7 +231,7 @@ table.
 | P3 | Can the robot be enabled at all? | Pivot to P8, skip motion entirely |
 | P4 | Does the gate still pass after the 2026-07-25 changes? | Stop; a regression in the command path outranks every experiment below |
 | P4a | Does tracking hold as speed rises? | Record the step that broke it and stop escalating — that number is the point of the session |
-| — | Time running short? | Protect P4a and P9; P6 and P7 are the droppable ones |
+| — | Time running short? | Protect P4a and P9; P6 is the droppable one. P7 is no longer droppable — it is where the open left-arm defect shows up, and it needs the recorder on |
 
 ## Reading the results
 

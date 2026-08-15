@@ -16,6 +16,10 @@ Local project code is licensed under BSD-3-Clause. The root `LICENSE` file cover
 | `baxter_gz_sim` | `BSD-3-Clause` |
 | `baxter_examples` | `BSD-3-Clause` |
 | `baxter_moveit_config` | `BSD-3-Clause` |
+| `baxter_hardware_bridge` | `BSD-3-Clause` |
+
+Workspace-owned scripts under `scripts/` (for example `py_bridge.py`) are also
+covered by the root BSD-3-Clause `LICENSE` unless a file says otherwise.
 
 Imported sources keep their upstream license files and package metadata.
 
@@ -44,5 +48,8 @@ No hardware bridge source, ROS 1 dependency source, Zenoh fallback, or unlicense
 
 `docs/reference/baxter_legacy/` contains third-party Baxter reference PDFs (Rethink
 Robotics user guide, research demo examples, and an academic thesis). They are
-reference-only material and are not covered by the root BSD-3-Clause license.
-See `docs/reference/baxter_legacy/README.md` for file descriptions and attribution.
+reference-only material and are **not** redistributed under the root BSD-3-Clause
+license; retain original authorship and upstream terms. See
+`docs/reference/baxter_legacy/README.md` for file descriptions and attribution.
+A future maintainer may move them to Git LFS or drop the thesis from the default
+clone; that is not required for a carefully worded sim-first tag.

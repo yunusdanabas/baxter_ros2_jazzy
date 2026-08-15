@@ -20,99 +20,48 @@ Then run:
 
 | Check | Current status |
 |---|---:|
-| Python compile/import for local launch/example/hardware-bridge files | passed |
-| Hardware-free `baxter_hardware_bridge` dry_run_test | passed, 25/25 |
-| Xacro expansion of `baxter_gz_control.urdf.xacro` | passed |
-| `check_urdf` on generated model | passed |
-| Static fixed-world, 17-state/14-command, and neutral-state checks | passed |
-| Finite controller limit/tolerance checks | passed |
-| Static SRDF ACM and MoveIt/OMPL/RViz config checks | passed |
+| Placeholder maintainer contact rejected (`package.xml` / SECURITY / CoC) | passed, 2026-07-25 |
+| Python compile/import for local launch/example/hardware-bridge files | passed, 2026-07-25 |
+| `ruff --select F` — unused imports and undefined names | passed, 2026-07-26 |
+| `colcon test` on `baxter_examples` (`trajectory_helpers` logic) | passed, 16 tests, 2026-07-26 |
+| Cleanup-handler AST guard (3 `except BaseException` handlers inspected) | passed, 2026-07-25 |
+| Hardware-free `baxter_hardware_bridge` dry_run_test | passed, 25/25, 2026-07-25 |
+| Xacro expansion of `baxter_gz_control.urdf.xacro` | passed, 2026-07-25 |
+| `check_urdf` on generated model | passed, 2026-07-25 |
+| Static fixed-world, 17-state/14-command, and neutral-state checks | passed, 2026-07-25 |
+| Finite controller limit/tolerance checks | passed, 2026-07-25 |
+| Static SRDF ACM and MoveIt/OMPL/RViz config checks | passed, 2026-07-25, `acm_pairs=54` |
 
 The CI path must not install ROS 1 dependencies, robot-network dependencies, or Zenoh. Local `baxter_hardware_bridge` dry-run is hardware-free and is part of CI.
 
 ## Manual Sim Smoke
 
-Run from the repository root after building:
+The commands live in **[sim_test_commands.md](sim_test_commands.md)** §3-§5 and
+are not duplicated here. Run one simulation at a time.
 
-```bash
-export ROS2CLI_NO_DAEMON=1
-```
-
-Run one simulation at a time.
-
-Terminal 1:
-
-```bash
-source /opt/ros/jazzy/setup.bash && source install/setup.bash
-ros2 launch baxter_gz_sim sim_rviz.launch.py headless:=false
-```
-
-Terminal 2:
-
-```bash
-source /opt/ros/jazzy/setup.bash && source install/setup.bash
-ros2 control list_controllers
-ros2 topic echo /joint_states --once
-ros2 launch baxter_examples sim_tiny_trajectory.launch.py
-```
-
-Pass criteria:
+What must be true before this is release evidence:
 
 ```text
 all three controllers active
 17 independent joints with advancing stamps
 fixed world -> base at z=0.92418
 RobotModel and TF status OK
-outbound and return max_error <= 0.02 rad for each arm
-motion visible in Gazebo and RViz
-```
-
-Run cancellation separately with `ros2 run baxter_examples sim_tiny_trajectory --ros-args -p use_sim_time:=true -p cancel_after_sec:=1.0`. Require accepted cancellation, held position, bounded exit, and no traceback.
-
-## Manual MoveIt Sim Smoke
-
-Run from the repository root after building:
-
-Terminal 1:
-
-```bash
-source /opt/ros/jazzy/setup.bash && source install/setup.bash
-export ROS2CLI_NO_DAEMON=1
-ros2 launch baxter_moveit_config sim_moveit_rviz.launch.py headless:=false
-```
-
-Terminal 2:
-
-```bash
-source /opt/ros/jazzy/setup.bash && source install/setup.bash
-ros2 action list
-ros2 run baxter_examples moveit_left_tiny
-ros2 run baxter_examples moveit_tiny --ros-args -p group:=right_arm
-ros2 run baxter_examples moveit_tiny --ros-args -p group:=both_arms
-ros2 run baxter_examples moveit_pose --ros-args -p group:=left_arm -p delta_z:=0.05
-ros2 run baxter_examples ik_service_client --ros-args -p limb:=left
-ros2 run baxter_examples ik_service_client --ros-args -p limb:=left -p x:=9.0
-```
-
-Pass criteria:
-
-```text
-/move_action
-move_group logs "You can start planning now!" with pipeline ompl
-no missing head/source-finger state warning
-left, right, and both-arm outbound/return max_error <= 0.02 rad
+outbound and return max_error <= 0.02 rad for each arm, direct and via MoveIt
+cancellation accepted, position held, bounded exit, no traceback
 moveit_pose reaches both absolute and delta targets
 ik_service_client solves left/right and exits non-zero on an unreachable pose
-motion visible in Gazebo
-robot visible in RViz via the RobotModel/TF displays
-OMPL and RRTConnectkConfigDefault available in MotionPlanning
+MotionPlanning panel loads with a populated OMPL planner dropdown
+motion visible in Gazebo, robot visible in RViz
+one Ctrl+C leaves no Gazebo, bridge, controller, robot-state-publisher,
+  MoveIt, or RViz process behind
 ```
 
-The MotionPlanning panel must load: no `Exception caught while processing action 'loadRobotModel'`, a populated planner dropdown instead of `NO PLANNING LIBRARY LOADED`, a 6-DOF interactive marker on each gripper, and no `No robot state or robot model loaded`. A comma-decimal `LC_NUMERIC` is the known trigger for all four at once; see `known_issues.md`.
+A hang, a leftover process, or a `move_group` crash fails the gate; Gazebo `-2`
+after SIGINT does not. The MotionPlanning panel failing to load is almost always
+a comma-decimal `LC_NUMERIC` — see [known_issues.md](known_issues.md).
 
-Run `moveit_tiny` once with `-p cancel_after_sec:=1.0`. Then send one Ctrl+C to the owning launch, wait, and require no Gazebo, bridge, controller, robot-state-publisher, MoveIt, or RViz process remains. Gazebo `-2` is expected after SIGINT; a hang, leftover process, or `move_group` crash fails the gate.
-
-Retain the launch logs, numeric outputs, environment values, and before/target/return screenshots or video before citing them as evidence.
+Retain the launch logs, numeric outputs, environment values, and
+before/target/return screenshots or video before citing any of it as evidence.
 
 ## Hardware Gates
 
@@ -121,11 +70,13 @@ Retain the launch logs, numeric outputs, environment values, and before/target/r
 | I10 hardware bridge non-motion | passed, 2026-07-22 |
 | I11 hardware action shims and safety tools | passed, 2026-07-22 |
 | I12 supervised hardware motion | passed, 2026-07-24 |
+| I20 path-tolerance speed / SRDF re-run | passed, 2026-07-25 |
 
-All three passed on a single BR-01 under supervision, at low speed. Release notes
-may say so and must not say more: fast motion, sustained duty, gripper commands
-and any second robot remain unmeasured. A claim without a session date and a log
-behind it does not go in release notes.
+I10–I12 and I20 passed on a single BR-01 under supervision. Release notes may
+state the I20 result that default `path_tolerance_rad` 0.2 binds near ~0.5 rad/s
+and must not imply 2.0 rad/s clamp use, sustained duty, gripper commands, or any
+second robot. A claim without a session date and a log behind it does not go in
+release notes.
 
 ## Release Hardening Checks
 
@@ -136,12 +87,17 @@ Before tagging a sim-first release, verify these files exist and use the same pr
 | `LICENSE` | BSD-3-Clause for local project code |
 | `CONTRIBUTING.md` | Present |
 | `SUPPORT.md` | Present |
-| `SECURITY.md` | Present |
+| `SECURITY.md` | Present, real contact — CI rejects `@example.com` |
+| `CODE_OF_CONDUCT.md` | Present, enforcement contact matches SECURITY |
 | `CHANGELOG.md` | Present |
 | `.github/ISSUE_TEMPLATE/` | Sim bug, hardware bridge bug, docs, safety concern, pin update, feature request |
 | `.github/pull_request_template.md` | Present |
-| `docs/release_notes_v0.1.0-sim.md` | Present |
+| `docs/sim_test_commands.md` | Present (no-robot verification sheet) |
+| `docs/archive/release_notes_v0.1.0-sim.md` | Present (historical) |
+| `docs/release_notes_v0.2.0.md` | Present (current publish notes) |
 | `docs/maintainer_handoff.md` | Present |
+| `docs/publish_checklist.md` | Present (human-only publish steps) |
+| GitHub private vulnerability reporting | **Not yet enabled — human action, blocks “ready”**; see [publish_checklist.md](publish_checklist.md) §3 |
 
 ## Release No-Go Conditions
 
@@ -151,6 +107,8 @@ Do not release the sim-first profile if any of these are true:
 |---|---:|
 | Default `.repos` imports anything besides the pinned ECN source | no-go if true |
 | Default build omits `--packages-skip baxter_bridge` | no-go if true |
-| Docs imply hardware support or supervised hardware motion | no-go if true |
+| Docs claim **unearned or over-broad** hardware support (beyond dated I10–I20 supervised evidence) | no-go if true |
 | Beginner docs teach raw safety-topic publishing | no-go if true |
 | Root project or local package licenses still contain `TODO` | no-go if true |
+| Any local `package.xml` / SECURITY / CoC still uses `@example.com` | no-go if true |
+| Script/docker defaults hardcode a lab serial or LAN IP | no-go if true |

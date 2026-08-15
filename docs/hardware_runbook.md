@@ -11,23 +11,27 @@ starting point for a supervised session, not permission to run unattended.
 - ROS 2 Jazzy workspace built: `colcon build --base-paths src --packages-skip baxter_bridge`
 - Baxter powered on with ROS 1 master running
 
-> **Source `scripts/baxter_env.sh` before building, not just before running.**
-> An active conda/mamba env puts its `python3` first on `PATH`, and setuptools
-> bakes that interpreter into the shebang of every installed entry point. The
-> build succeeds, then every `ros2 run` and the shim launch fail at runtime with
-> `No module named 'rclpy._rclpy_pybind11'`, because rclpy's C extension is built
-> for the system python3.12. `baxter_env.sh` strips conda from `PATH`, which fixes
-> both the build and the run. Check with
+> **Set `BAXTER_HOST` and source `scripts/baxter_env.sh` before building, not
+> just before running.** Scripts do not hardcode a lab serial or IP — export the
+> robot's mDNS hostname first (for this lab BR-01: `export
+> BAXTER_HOST=011412P0024.local`). An active conda/mamba env puts its `python3`
+> first on `PATH`, and setuptools bakes that interpreter into the shebang of
+> every installed entry point. The build succeeds, then every `ros2 run` and the
+> shim launch fail at runtime with `No module named 'rclpy._rclpy_pybind11'`,
+> because rclpy's C extension is built for the system python3.12.
+> `baxter_env.sh` strips conda from `PATH`, which fixes both the build and the
+> run. Check with
 > `head -1 install/baxter_hardware_bridge/lib/baxter_hardware_bridge/dry_run_test` —
 > it must say `/usr/bin/python3`.
 
 ## Network Setup (do this first — it is where sessions actually get stuck)
 
-Baxter is addressed by its mDNS hostname **`011412P0024.local`** (from the
-robot's serial). Its IP is a DHCP lease and **moves between sessions** — do
-not hardcode it. As observed on 2026-07-22 it was `192.168.1.232`, and while
-the robot was still booting it briefly self-assigned the link-local address
-`169.254.8.12`.
+Baxter is addressed by its mDNS hostname (from the robot's serial). For the
+supervised sessions documented here that was **`011412P0024.local`**. Its IP is
+a DHCP lease and **moves between sessions** — do not hardcode it, and do not
+rely on a script default. As observed on 2026-07-22 it was `192.168.1.232`, and
+while the robot was still booting it briefly self-assigned the link-local
+address `169.254.8.12`.
 
 The laptop's ethernet (`enp4s0`) must hold an address **on the robot's
 subnet**, obtained from the same DHCP server:
@@ -96,22 +100,36 @@ Two traps make "I stopped that" untrue, and both have cost real session time:
   one with `ps -eo pid,ppid,cmd | grep <node>` and kill that. Never use
   `pkill -f`: the pattern matches the shell running it, which is how a
   `ros2 launch` parent once died while its shims survived as orphans.
-- **`baxter_examples` runs the last built copy.** It is `ament_cmake` and
-  installs its scripts with `install(PROGRAMS ...)`, which copies even under
-  `--symlink-install`, so `ros2 run baxter_examples ...` will happily test code
-  you have edited but not built. `baxter_hardware_bridge` is `ament_python` and
-  *is* symlinked, which is what makes the inconsistency easy to miss. Build
-  before believing the output.
+- **`baxter_examples` edits now take effect without a rebuild.** Both it and
+  `baxter_hardware_bridge` are `ament_python`, so `--symlink-install` really
+  symlinks and `ros2 run baxter_examples ...` runs the file you just edited.
+  Until I21 it was `ament_cmake` with `install(PROGRAMS ...)`, which copies even
+  under `--symlink-install`; that is how two I19 rehearsals silently tested
+  stale code. If you are on a workspace built before I21, rebuild once.
 
 `test_bridge_loopback.sh` negotiates real TCPROS against a genuine `roscore`, so
 it needs a local ROS 1 Noetic image, `baxter-noetic:n07` by default (override
-with `IMAGE=`). Nothing in this repo builds it; if
-`docker image inspect baxter-noetic:n07` fails, rebuild per
-`docker/local_image_inventory.md`, or skip this check — it exercises the bridge
-protocol layer only, not the shim. It must run on the **host** Docker daemon:
+with `IMAGE=`). Nothing in this repo builds it — it comes from a separate ROS 1
+workspace on the bridge host — so if `docker image inspect baxter-noetic:n07`
+fails, rebuild it there or skip this check: it exercises the bridge protocol
+layer only, not the shim. It must run on the **host** Docker daemon:
 ROS 1 needs host networking, and a `docker system prune` has removed this image
 before. Expected on success:
 `OVERALL: PASS (both directions negotiated real TCPROS with genuine rospy)`.
+
+### What still needs the Noetic Docker image
+
+`scripts/py_bridge.py`, the action shims, and most of a supervised session already
+run without Docker. The ~5 GB `baxter-noetic` image is still required for:
+
+| Capability | Why |
+|---|---|
+| `tuck_arms.py -u` | Untuck out of the enable force-field; tucked `s1` is outside the URDF limit table, so a shim-based untuck would command outside the safety envelope |
+| `enable_robot.py` / `rosbag record` (ROS 1 side) | Convenience today; enable could be a small `py_bridge` publish later |
+| `test_bridge_loopback.sh` | Desk protocol test against genuine `roscore` |
+
+Publishing a new ROS 1 type from `py_bridge` needs an `ROS1_MSG_META` entry if
+recordings must decode; subscribe-side negotiation still uses a wildcard md5sum.
 
 ## Quick Start (3 terminals)
 
@@ -119,6 +137,7 @@ before. Expected on success:
 
 ```bash
 cd ~/baxter_ros2_jazzy
+export BAXTER_HOST=011412P0024.local   # your robot's mDNS hostname
 source scripts/baxter_env.sh
 python3 scripts/py_bridge.py
 ```
@@ -133,6 +152,7 @@ and confirm no `deserialize failed` warnings follow.
 
 ```bash
 cd ~/baxter_ros2_jazzy
+export BAXTER_HOST=011412P0024.local
 source scripts/baxter_env.sh
 ros2 topic echo /robot/state
 ros2 topic hz /robot/joint_states
@@ -146,6 +166,7 @@ You should see:
 
 ```bash
 cd ~/baxter_ros2_jazzy
+export BAXTER_HOST=011412P0024.local
 source scripts/baxter_env.sh
 ros2 launch baxter_hardware_bridge hardware_bringup.launch.py
 ```
