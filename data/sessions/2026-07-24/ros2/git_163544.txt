@@ -1,0 +1,3 @@
+d2190ebfccded5c3984a220afd0cdae3677dd485
+?? docker/local_image_inventory.md
+?? docs/baxter_sticker.jpeg

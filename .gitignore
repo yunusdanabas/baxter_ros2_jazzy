@@ -8,8 +8,9 @@ __pycache__/
 *.egg-info/
 src/baxter_common_ros2/
 
-# Robot session recordings (bags + inventory snapshots) — local only, large
-data/
+# Robot session recordings (bags + inventory snapshots) are tracked: they are
+# the only evidence behind the tracking-error and path-tolerance numbers the
+# docs quote, and the robot is not always reachable to re-record them.
 
 # Host-local Docker disk inventory (paths, free %, image IDs) — never publish
 docker/local_image_inventory.md
@@ -29,12 +30,9 @@ docs/manual/*.fdb_latexmk
 docs/manual/*.synctex.gz
 docs/manual/chapters/*.aux
 
-# LLM agent workflow (local only; not part of the public OSS tree)
-plan/
-.cursor/
-AGENTS.md
-MASTER_PLAN.md
-PROMPTS.md
-WORKFLOW.md
-RESEARCH_FINDINGS.md
-logs/
+# The planning corpus and per-gate logs are tracked. They were local-only while
+# the tree was being shaped for publication; keeping them costs a one-time
+# ~100 MB and preserves the reasoning behind decisions the code cannot show.
+# Caches under them stay out.
+.cursor/**/*.log
+plan/**/__pycache__/

@@ -1,0 +1,40 @@
+# /baxter_py_bridge
+/baxter_py_bridge:
+  ros__parameters:
+    start_type_description_service: true
+    use_sim_time: false
+
+# /left_arm_shim
+/left_arm_shim:
+  ros__parameters:
+    command_rate: 100.0
+    command_timeout: 0.2
+    goal_time_sec: 0.1
+    hold_duration_sec: 1.0
+    joint_states_stale_sec: 2.0
+    max_step_rad_per_cycle: 0.02
+    mock_mode: false
+    path_tolerance_rad: 0.2
+    side: left
+    speed_ratio: 0.1
+    start_type_description_service: true
+    stopped_velocity_tolerance: 0.25
+    use_sim_time: false
+
+# /right_arm_shim
+/right_arm_shim:
+  ros__parameters:
+    command_rate: 100.0
+    command_timeout: 0.2
+    goal_time_sec: 0.1
+    hold_duration_sec: 1.0
+    joint_states_stale_sec: 2.0
+    max_step_rad_per_cycle: 0.02
+    mock_mode: false
+    path_tolerance_rad: 0.2
+    side: right
+    speed_ratio: 0.1
+    start_type_description_service: true
+    stopped_velocity_tolerance: 0.25
+    use_sim_time: false
+

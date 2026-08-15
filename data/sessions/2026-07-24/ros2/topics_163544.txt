@@ -1,0 +1,10 @@
+/parameter_events
+/robot/joint_states
+/robot/limb/left/joint_command
+/robot/limb/left/joint_command_timeout
+/robot/limb/left/set_speed_ratio
+/robot/limb/right/joint_command
+/robot/limb/right/joint_command_timeout
+/robot/limb/right/set_speed_ratio
+/robot/state
+/rosout

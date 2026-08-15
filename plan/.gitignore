@@ -1,0 +1,12 @@
+# This workspace is for research and design only, not version-controlled
+# Ignore everything except the defined structure
+*
+!.gitignore
+!README.md
+!MASTER_PLAN.md
+!PROMPTS.md
+!EXISTING_RESEARCH.md
+!logs/
+!logs/*.log.md
+# Reference copy of Noetic repo (read-only, large, do not track)
+# baxter_noetic_ref/ is intentionally excluded from tracking
