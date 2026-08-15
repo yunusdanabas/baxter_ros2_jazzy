@@ -115,7 +115,7 @@ def main() -> None:
 
     ip = sys.argv[1]
     master_uri = get_master_uri(ip)
-    print(f"\n=== I10 Non-Motion Bridge Check ===")
+    print("\n=== I10 Non-Motion Bridge Check ===")
     print(f"Robot IP: {ip}")
     print(f"ROS 1 Master URI: {master_uri}\n")
 

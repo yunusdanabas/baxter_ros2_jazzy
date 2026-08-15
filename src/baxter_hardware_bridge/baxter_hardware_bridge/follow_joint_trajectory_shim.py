@@ -49,7 +49,7 @@ from typing import List, Optional
 
 import rclpy
 from baxter_core_msgs.msg import JointCommand
-from baxter_hardware_bridge.executor_util import make_shim_executor
+from rclpy.executors import MultiThreadedExecutor
 from baxter_hardware_bridge.safety import SafetyStateChecker
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -598,7 +598,10 @@ class FollowJointTrajectoryShim(Node):
 def main() -> None:
     rclpy.init()
     node = FollowJointTrajectoryShim()
-    executor = make_shim_executor()
+    # 4 threads: execute callback, cancel, joint_states, robot/state, timers.
+    # A blocking execute callback must not starve cancel/safety. dry_run_test
+    # builds the same executor so it exercises the production concurrency.
+    executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
     try:
         executor.spin()

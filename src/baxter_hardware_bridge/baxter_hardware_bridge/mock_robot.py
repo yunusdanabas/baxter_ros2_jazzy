@@ -12,8 +12,6 @@ Usage:
   ros2 run baxter_hardware_bridge follow_joint_trajectory_shim --ros-args -p side:=left -p mock_mode:=true
 """
 
-from typing import List
-
 import rclpy
 from baxter_core_msgs.msg import AssemblyState, JointCommand
 from rclpy.node import Node

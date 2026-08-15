@@ -51,8 +51,9 @@ ECHO_PID=$!
 echo "=== Running py_bridge negotiation (host side) ==="
 # Via baxter_env.sh, not the ROS setup files directly: it also strips an active
 # conda install from PATH, without which rclpy fails to import here exactly as it
-# does on the robot.
+# does on the robot. Desk loopback has no robot — use localhost (not a lab serial).
 # shellcheck disable=SC1091
+export BAXTER_HOST="${BAXTER_HOST:-127.0.0.1}"
 source "$SCRIPT_DIR/baxter_env.sh" >/dev/null
 
 PY_STATUS=0

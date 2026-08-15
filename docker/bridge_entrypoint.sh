@@ -11,8 +11,12 @@ export ROS_DISTRO=foxy
 # Use FastDDS for cross-distro DDS compatibility with Jazzy
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
-# Robot connection — overridable at runtime
-export ROS_MASTER_URI="${ROS_MASTER_URI:-http://192.168.1.224:11311}"
+# Robot connection — required at runtime (DHCP leases move; no lab IP default).
+if [ -z "${ROS_MASTER_URI:-}" ]; then
+    echo "ERROR: set ROS_MASTER_URI (e.g. export ROS_MASTER_URI=http://<robot-ip>:11311)" >&2
+    exit 1
+fi
+export ROS_MASTER_URI
 export ROS_IP="${ROS_IP:-$(hostname -I | awk '{print $1}')}"
 # No ROS_DOMAIN_ID: the container must share the host's default domain or the
 # action shim on the laptop never sees the bridged topics.

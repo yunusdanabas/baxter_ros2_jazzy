@@ -29,9 +29,16 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 IMAGE="${IMAGE:-baxter-noetic:n07}"
-BAXTER_HOST="${BAXTER_HOST:-011412P0024.local}"
-BAXTER_IP="${BAXTER_IP:-$(getent hosts "$BAXTER_HOST" 2>/dev/null | awk '{print $1}' | head -1)}"
-: "${BAXTER_IP:?cannot resolve $BAXTER_HOST — check the network (runbook step 0)}"
+# Require BAXTER_HOST, or BAXTER_IP alone for desk self-checks (no lab default).
+if [ -z "${BAXTER_IP:-}" ]; then
+    if [ -z "${BAXTER_HOST:-}" ]; then
+        echo "ERROR: set BAXTER_HOST=<robot-serial>.local (or BAXTER_IP=...)" >&2
+        exit 1
+    fi
+    BAXTER_IP="$(getent hosts "$BAXTER_HOST" 2>/dev/null | awk '{print $1}' | head -1 || true)"
+fi
+: "${BAXTER_IP:?cannot resolve ${BAXTER_HOST:-BAXTER_HOST} — check the network (runbook step 0)}"
+BAXTER_HOST="${BAXTER_HOST:-$BAXTER_IP}"
 ROS_IP="${ROS_IP:-$(ip route get "$BAXTER_IP" 2>/dev/null | grep -oP 'src \K\S+')}"
 # Cameras are the only real bandwidth hog and we are not studying vision.
 EXCLUDE="${EXCLUDE:-/cameras/.*}"

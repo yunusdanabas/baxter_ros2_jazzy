@@ -1,38 +1,26 @@
 #!/usr/bin/env python3
 
-import math
 import time
 from typing import Dict, List, Optional
 
 import rclpy
-from rcl_interfaces.msg import ParameterType
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import Constraints, JointConstraint
 from rclpy.action import ActionClient
 from rclpy.node import Node
-from rclpy.parameter_client import AsyncParameterClient
 from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import JointState
 
+from baxter_examples.trajectory_helpers import (
+    LEFT_JOINTS,
+    RIGHT_JOINTS,
+    cancel_active_goal,
+    choose_reversible_target as _choose_reversible_target,
+    positions_for_joints_dict as positions_for_joints,
+    require_sim_move_group,
+    wait_for_future,
+)
 
-LEFT_JOINTS = [
-    "left_s0",
-    "left_s1",
-    "left_e0",
-    "left_e1",
-    "left_w0",
-    "left_w1",
-    "left_w2",
-]
-RIGHT_JOINTS = [
-    "right_s0",
-    "right_s1",
-    "right_e0",
-    "right_e1",
-    "right_w0",
-    "right_w1",
-    "right_w2",
-]
 GROUP_JOINTS = {
     "left_arm": LEFT_JOINTS,
     "right_arm": RIGHT_JOINTS,
@@ -43,31 +31,12 @@ GROUP_MOTION_JOINTS = {
     "right_arm": ["right_s1"],
     "both_arms": ["left_s1", "right_s1"],
 }
-JOINT_LIMIT = (-2.147, 1.047)
 JOINT_DELTA_RAD = 0.25
-JOINT_LIMIT_MARGIN_RAD = 0.05
 FINAL_TOLERANCE_RAD = 0.02
 
 
-def positions_for_joints(joint_state: JointState, joint_names: List[str]) -> Dict[str, float]:
-    positions = dict(zip(joint_state.name, joint_state.position))
-    missing = [joint for joint in joint_names if joint not in positions]
-    if missing:
-        raise RuntimeError(f"Missing joints in /joint_states: {missing}")
-    if not all(math.isfinite(positions[joint]) for joint in joint_names):
-        raise RuntimeError(f"Non-finite positions in /joint_states for {joint_names}")
-    return {joint: positions[joint] for joint in joint_names}
-
-
 def choose_reversible_target(start: float) -> float:
-    lower, upper = JOINT_LIMIT
-    if not lower <= start <= upper:
-        raise RuntimeError(f"s1 start {start:.3f} rad is outside [{lower}, {upper}]")
-    if start + JOINT_DELTA_RAD <= upper - JOINT_LIMIT_MARGIN_RAD:
-        return start + JOINT_DELTA_RAD
-    if start - JOINT_DELTA_RAD >= lower + JOINT_LIMIT_MARGIN_RAD:
-        return start - JOINT_DELTA_RAD
-    raise RuntimeError(f"No safe reversible s1 target from {start:.3f} rad")
+    return _choose_reversible_target(start, delta=JOINT_DELTA_RAD, joint="s1")
 
 
 class MoveItTiny(Node):
@@ -92,15 +61,7 @@ class MoveItTiny(Node):
         self._joint_state_sequence += 1
 
     def _wait_for_future(self, future, timeout_sec: float, description: str):
-        deadline = time.monotonic() + timeout_sec
-        while rclpy.ok() and not future.done():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise RuntimeError(f"Timed out waiting for {description}")
-            rclpy.spin_once(self, timeout_sec=min(0.1, remaining))
-        if not future.done():
-            raise RuntimeError(f"ROS shut down while waiting for {description}")
-        return future.result()
+        return wait_for_future(self, future, timeout_sec, description)
 
     def wait_for_fresh_joint_state(
         self, joint_names: List[str], after_sequence: Optional[int] = None, timeout_sec: float = 10.0
@@ -118,16 +79,12 @@ class MoveItTiny(Node):
             rclpy.spin_once(self, timeout_sec=min(0.1, remaining))
         raise RuntimeError("ROS shut down while waiting for /joint_states")
 
+    # Thin on purpose — see the note in sim_tiny_trajectory: CI's AST check
+    # matches an attribute call by this name inside `except BaseException`.
     def _cancel_active_goal(self) -> bool:
-        if self._active_goal is None:
-            return False
-        cancel_future = self._active_goal.cancel_goal_async()
-        response = self._wait_for_future(cancel_future, 5.0, "MoveGroup cancellation")
-        if not response.goals_canceling:
-            raise RuntimeError("MoveGroup did not accept goal cancellation")
-        self.get_logger().info("MoveGroup goal canceled; controllers are holding position")
+        canceled = cancel_active_goal(self, self._active_goal, "MoveGroup")
         self._active_goal = None
-        return True
+        return canceled
 
     def _check_hold(self, joint_names: List[str]) -> None:
         first = self.wait_for_fresh_joint_state(joint_names)
@@ -145,15 +102,7 @@ class MoveItTiny(Node):
         self.get_logger().info(f"Cancellation hold verified: max_drift={drift:.4f} rad")
 
     def _require_sim_move_group(self) -> None:
-        client = AsyncParameterClient(self, "/move_group")
-        if not client.wait_for_services(timeout_sec=15.0):
-            raise RuntimeError("MoveGroup parameter service not available")
-        response = self._wait_for_future(
-            client.get_parameters(["use_sim_time"]), 15.0, "MoveGroup use_sim_time"
-        )
-        value = response.values[0]
-        if value.type != ParameterType.PARAMETER_BOOL or not value.bool_value:
-            raise RuntimeError("Refusing motion: /move_group is not using simulation time")
+        require_sim_move_group(self)
 
     def send_goal(
         self,

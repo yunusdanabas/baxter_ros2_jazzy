@@ -18,8 +18,13 @@ if [ -n "${CONDA_PREFIX}" ] && [ -n "${CONDA_EXE}" ]; then
 fi
 
 # Robot. Address by mDNS hostname (from the robot's serial) — its DHCP lease
-# moves, so a hardcoded IP goes stale. Override BAXTER_HOST to use another.
-export BAXTER_HOST="${BAXTER_HOST:-011412P0024.local}"
+# moves, so never hardcode a lab IP or serial here. Callers must set BAXTER_HOST
+# (e.g. export BAXTER_HOST=<robot-serial>.local). Desk loopback may use 127.0.0.1.
+if [ -z "${BAXTER_HOST:-}" ]; then
+    echo "ERROR: set BAXTER_HOST before sourcing (e.g. export BAXTER_HOST=<robot-serial>.local)" >&2
+    return 1 2>/dev/null || exit 1
+fi
+export BAXTER_HOST
 # `|| true`: with the robot off the network these lookups fail, and without the
 # guard sourcing this script kills any caller running under `set -e` — which is
 # every desk-day run of scripts/test_bridge_loopback.sh.

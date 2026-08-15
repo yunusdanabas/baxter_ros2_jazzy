@@ -41,7 +41,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import rclpy
 from baxter_core_msgs.msg import AssemblyState
-from baxter_hardware_bridge.executor_util import make_shim_executor
+from rclpy.executors import MultiThreadedExecutor
 from baxter_hardware_bridge.follow_joint_trajectory_shim import (
     RESULT_ABORTED,
     RESULT_CANCELED,
@@ -119,7 +119,9 @@ def send_and_wait(node, client, goal, label: str, results: List[str]):
 
 def run_test() -> bool:
     rclpy.init()
-    executor = make_shim_executor()
+    # Must match production main() in follow_joint_trajectory_shim.py: a
+    # blocking execute callback must not starve cancel/safety subscriptions.
+    executor = MultiThreadedExecutor(num_threads=4)
     mock: Optional[MockRobot] = None
     shim: Optional[FollowJointTrajectoryShim] = None
     test_node = None

@@ -2,19 +2,23 @@
 
 import math
 import time
-from typing import Optional, Tuple
+from typing import Tuple
 
 import rclpy
 from geometry_msgs.msg import Pose, TransformStamped
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import Constraints, PositionConstraint
-from rcl_interfaces.msg import ParameterType
 from rclpy.action import ActionClient
 from rclpy.node import Node
-from rclpy.parameter_client import AsyncParameterClient
 from rclpy.signals import SignalHandlerOptions
 from shape_msgs.msg import SolidPrimitive
 from tf2_ros import Buffer, TransformListener
+
+from baxter_examples.trajectory_helpers import (
+    cancel_active_goal,
+    require_sim_move_group,
+    wait_for_future,
+)
 
 
 GROUP_TIP = {
@@ -61,37 +65,17 @@ class MoveItPose(Node):
         self._active_goal = None
 
     def _wait_for_future(self, future, timeout_sec: float, description: str):
-        deadline = time.monotonic() + timeout_sec
-        while rclpy.ok() and not future.done():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise RuntimeError(f"Timed out waiting for {description}")
-            rclpy.spin_once(self, timeout_sec=min(0.1, remaining))
-        if not future.done():
-            raise RuntimeError(f"ROS shut down while waiting for {description}")
-        return future.result()
+        return wait_for_future(self, future, timeout_sec, description)
 
+    # Thin on purpose — see the note in sim_tiny_trajectory: CI's AST check
+    # matches an attribute call by this name inside `except BaseException`.
     def _cancel_active_goal(self) -> bool:
-        if self._active_goal is None:
-            return False
-        cancel_future = self._active_goal.cancel_goal_async()
-        response = self._wait_for_future(cancel_future, 5.0, "MoveGroup cancellation")
-        if not response.goals_canceling:
-            raise RuntimeError("MoveGroup did not accept goal cancellation")
-        self.get_logger().info("MoveGroup goal canceled; controllers are holding position")
+        canceled = cancel_active_goal(self, self._active_goal, "MoveGroup")
         self._active_goal = None
-        return True
+        return canceled
 
     def _require_sim_move_group(self) -> None:
-        client = AsyncParameterClient(self, "/move_group")
-        if not client.wait_for_services(timeout_sec=15.0):
-            raise RuntimeError("MoveGroup parameter service not available")
-        response = self._wait_for_future(
-            client.get_parameters(["use_sim_time"]), 15.0, "MoveGroup use_sim_time"
-        )
-        value = response.values[0]
-        if value.type != ParameterType.PARAMETER_BOOL or not value.bool_value:
-            raise RuntimeError("Refusing motion: /move_group is not using simulation time")
+        require_sim_move_group(self)
 
     def _lookup_tip_pose(self) -> Tuple[float, float, float]:
         deadline = time.monotonic() + 10.0

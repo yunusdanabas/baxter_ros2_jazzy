@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import math
 import time
 from typing import List, Optional
 
@@ -12,80 +11,22 @@ from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 
+from baxter_examples.trajectory_helpers import (
+    DEFAULT_MOTION_JOINT,
+    JOINT_DELTA_RAD,
+    JOINT_LIMITS,
+    LEFT_JOINTS,
+    RIGHT_JOINTS,
+    cancel_active_goal,
+    choose_reversible_target,
+    positions_for_joints_list as positions_for_joints,
+    wait_for_future,
+)
 
-LEFT_JOINTS = [
-    "left_s0",
-    "left_s1",
-    "left_e0",
-    "left_e1",
-    "left_w0",
-    "left_w1",
-    "left_w2",
-]
-
-RIGHT_JOINTS = [
-    "right_s0",
-    "right_s1",
-    "right_e0",
-    "right_e1",
-    "right_w0",
-    "right_w1",
-    "right_w2",
-]
-
-DEFAULT_MOTION_JOINT = "s1"
-JOINT_DELTA_RAD = 0.35
-# Position limits per joint suffix, from the URDF. The action shim keeps its own
-# copy and rejects any out-of-limit point, so this is not the safety boundary --
-# it is only here to pick a reversible target that will not be rejected, and to
-# fail early with a clear message when no such target exists.
-JOINT_LIMITS = {
-    "s0": (-1.70167993878, 1.70167993878),
-    "s1": (-2.147, 1.047),
-    "e0": (-3.05417993878, 3.05417993878),
-    "e1": (-0.05, 2.618),
-    "w0": (-3.059, 3.059),
-    "w1": (-1.57079632679, 2.094),
-    "w2": (-3.059, 3.059),
-}
-JOINT_LIMIT_MARGIN_RAD = 0.05
 FINAL_TOLERANCE_RAD = 0.02
 TRAJECTORY_DURATION_SEC = 3.0
 SETTLE_TIMEOUT_SEC = 2.0
 HOLD_WINDOW_SEC = 1.0
-
-
-def positions_for_joints(joint_state: JointState, joint_names: List[str]) -> List[float]:
-    name_to_position = dict(zip(joint_state.name, joint_state.position))
-    missing = [name for name in joint_names if name not in name_to_position]
-    if missing:
-        raise RuntimeError(f"Missing joints in /joint_states: {missing}")
-    positions = [name_to_position[name] for name in joint_names]
-    if not all(math.isfinite(position) for position in positions):
-        raise RuntimeError(f"Non-finite positions in /joint_states for {joint_names}")
-    return positions
-
-
-def choose_reversible_target(
-    start: float, delta: float = JOINT_DELTA_RAD, joint: str = DEFAULT_MOTION_JOINT
-) -> float:
-    try:
-        lower, upper = JOINT_LIMITS[joint]
-    except KeyError:
-        raise RuntimeError(
-            f"Unknown joint '{joint}'; expected one of {sorted(JOINT_LIMITS)}"
-        )
-    if not lower <= start <= upper:
-        raise RuntimeError(
-            f"{joint} start {start:.3f} rad is outside [{lower}, {upper}]"
-        )
-    if start + delta <= upper - JOINT_LIMIT_MARGIN_RAD:
-        return start + delta
-    if start - delta >= lower + JOINT_LIMIT_MARGIN_RAD:
-        return start - delta
-    raise RuntimeError(
-        f"No safe reversible {joint} target {delta:.3f} rad from {start:.3f} rad"
-    )
 
 
 class SimTinyTrajectory(Node):
@@ -157,15 +98,7 @@ class SimTinyTrajectory(Node):
             )
 
     def _wait_for_future(self, future, timeout_sec: float, description: str):
-        deadline = time.monotonic() + timeout_sec
-        while rclpy.ok() and not future.done():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise RuntimeError(f"Timed out waiting for {description}")
-            rclpy.spin_once(self, timeout_sec=min(0.1, remaining))
-        if not future.done():
-            raise RuntimeError(f"ROS shut down while waiting for {description}")
-        return future.result()
+        return wait_for_future(self, future, timeout_sec, description)
 
     def wait_for_fresh_joint_state(
         self, joint_names: List[str], after_sequence: Optional[int] = None, timeout_sec: float = 10.0
@@ -187,16 +120,13 @@ class SimTinyTrajectory(Node):
             rclpy.spin_once(self, timeout_sec=min(0.1, remaining))
         raise RuntimeError("ROS shut down while waiting for /joint_states")
 
+    # Kept as a method, thin: CI's cleanup-handler AST check looks for an
+    # attribute call named _cancel_active_goal inside `except BaseException`.
+    # Calling the module function directly there would disarm that guard.
     def _cancel_active_goal(self) -> bool:
-        if self._active_goal is None:
-            return False
-        cancel_future = self._active_goal.cancel_goal_async()
-        response = self._wait_for_future(cancel_future, 5.0, "goal cancellation")
-        if not response.goals_canceling:
-            raise RuntimeError("Controller did not accept goal cancellation")
-        self.get_logger().info("Active trajectory canceled; controller is holding position")
+        canceled = cancel_active_goal(self, self._active_goal, "Controller")
         self._active_goal = None
-        return True
+        return canceled
 
     def _check_hold(self, joint_names: List[str]) -> None:
         # Judging the first window after cancel measures the settle transient,
