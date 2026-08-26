@@ -11,11 +11,12 @@ This repo is sim-first. Keep changes inside the profile they actually affect.
 | `sim_moveit` | passed, manual/local smoke |
 | `sim_moveit_rviz` | passed, manual/local GUI |
 | default CI/devcontainer | passed, hardware-free |
-| `hardware_bridge` | blocked |
-| supervised hardware motion | blocked |
+| `hardware_bridge` | experimental and unsupported |
+| supervised hardware motion | unsupported |
 | Zenoh/compatibility fallback | deferred |
 
-Do not claim hardware support from sim evidence. Hardware bridge and motion claims require I10-I12 gate logs.
+Do not claim hardware support from simulation or mock evidence. Hardware bridge and
+motion claims require reviewed real-robot validation evidence.
 
 ## Default Checks
 
@@ -47,7 +48,9 @@ Do not copy or import code/config from unlicensed repositories.
 
 ## Hardware Safety Review
 
-Hardware bridge, safety, or motion changes are blocked until the named hardware gates reopen. Do not add hardware bridge tooling, action shims, grippers, compatibility layers, or Zenoh fallback under the sim-first release scope.
+Keep hardware bridge, safety, or motion changes separate from the supported
+simulation path. Do not expose experimental hardware commands as beginner or
+supported workflows without reviewed real-robot validation.
 
 Beginner and release docs must not teach raw safety-topic publishing or hardware enable commands.
 

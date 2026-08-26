@@ -87,7 +87,7 @@ class IKServiceClient(Node):
         ik.group_name = f"{self._limb}_arm"
         ik.ik_link_name = f"{self._limb}_gripper"
         ik.pose_stamped = pose_stamped
-        # ponytail: an empty diff state makes move_group seed from the live robot state.
+        # An empty diff state makes move_group seed from the live robot state.
         ik.robot_state.is_diff = True
         ik.avoid_collisions = self.get_parameter("avoid_collisions").value
         timeout = self.get_parameter("timeout").value

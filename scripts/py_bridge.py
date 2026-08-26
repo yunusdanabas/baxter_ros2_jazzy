@@ -15,7 +15,7 @@ Bridges these topics (I10 non-motion + I11 motion path):
     /robot/limb/{side}/joint_command_timeout (std_msgs/Float64)
 
 Usage:
-  python3 py_bridge.py --master http://192.168.1.224:11311 --ip 192.168.1.108
+  python3 py_bridge.py --master http://ROBOT_IP:11311 --ip LOCAL_IP
 """
 
 import argparse
@@ -26,6 +26,7 @@ import threading
 import time
 import xmlrpc.client
 from typing import Optional
+from urllib.parse import urlparse
 
 import rclpy
 from rclpy.node import Node
@@ -415,7 +416,7 @@ class BaxterPyBridge(Node):
 
 def main():
     parser = argparse.ArgumentParser(description="Pure Python Baxter ROS 1->2 bridge")
-    parser.add_argument("--master", default="http://192.168.1.224:11311",
+    parser.add_argument("--master", required=True,
                         help="ROS 1 master URI")
     parser.add_argument("--ip", default=None,
                         help="Local IP reachable by Baxter (auto-detect if omitted)")
@@ -423,12 +424,15 @@ def main():
 
     local_ip = args.ip
     if not local_ip:
+        master = urlparse(args.master)
+        if not master.hostname:
+            parser.error("--master must contain a robot hostname or IP")
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            s.connect(("192.168.1.224", 11311))
+            s.connect((master.hostname, master.port or 11311))
             local_ip = s.getsockname()[0]
-        except Exception:
-            local_ip = "192.168.1.108"
+        except OSError as exc:
+            parser.error(f"cannot detect a local robot-network IP: {exc}; pass --ip")
         finally:
             s.close()
 

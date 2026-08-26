@@ -27,7 +27,8 @@ Then run:
 | Finite controller limit/tolerance checks | passed |
 | Static SRDF ACM and MoveIt/OMPL/RViz config checks | passed |
 
-The CI path must not install hardware bridge tooling, ROS 1 dependencies, robot-network dependencies, or Zenoh.
+The CI path must not install ROS 1 or robot-network dependencies, start the
+experimental hardware bridge, connect to a robot, or install Zenoh.
 
 ## Manual Sim Smoke
 
@@ -136,7 +137,7 @@ Before tagging a sim-first release, verify these files exist and use the same pr
 | `CHANGELOG.md` | Present |
 | `.github/ISSUE_TEMPLATE/` | Sim bug, hardware bridge bug, docs, safety concern, pin update, feature request |
 | `.github/pull_request_template.md` | Present |
-| `docs/release_notes_v0.1.0-sim.md` | Present |
+| `docs/simulation_baseline.md` | Present |
 | `docs/maintainer_handoff.md` | Present |
 
 ## Release No-Go Conditions

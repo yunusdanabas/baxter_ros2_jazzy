@@ -3,10 +3,18 @@ install/
 log/
 .env
 .vscode/
+.idea/
+.DS_Store
+*.swp
 __pycache__/
 *.py[cod]
 *.egg-info/
 src/baxter_common_ros2/
+*.bag
+*.bag.active
+*.mcap
+*.mcap.zstd
+data/sessions/
 
 # LLM agent workflow (local only; not part of the public OSS tree)
 plan/

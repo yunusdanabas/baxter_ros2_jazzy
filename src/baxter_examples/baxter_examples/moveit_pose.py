@@ -25,7 +25,7 @@ POSITION_TOLERANCE_M = 0.03
 
 
 def _parameter_is_unset(node: Node, name: str) -> bool:
-    # ponytail: get_parameter() raises ParameterUninitializedException on a declared-but-
+    # get_parameter() raises ParameterUninitializedException on a declared-but-
     # unset statically typed parameter; get_parameter_or() returns NOT_SET instead.
     return node.get_parameter_or(name).value is None
 

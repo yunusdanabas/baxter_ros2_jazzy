@@ -4,8 +4,13 @@
 
 set -e
 
-ROBOT_IP="${1:-192.168.1.224}"
+ROBOT_IP="${1:-${BAXTER_ROBOT_IP:-}}"
 LOCAL_IP="${2:-$(hostname -I | awk '{print $1}')}"
+
+if [[ -z "${ROBOT_IP}" ]]; then
+  echo "Usage: scripts/run_bridge.sh ROBOT_IP [LOCAL_IP]" >&2
+  exit 2
+fi
 
 source /opt/ros/jazzy/setup.bash 2>/dev/null || true
 source "$(dirname "$0")/../install/setup.bash" 2>/dev/null || true

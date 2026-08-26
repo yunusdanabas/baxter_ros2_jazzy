@@ -16,7 +16,7 @@ Usage:
   python3 i10_non_motion_check.py <robot_ip>
 
 Example:
-  python3 i10_non_motion_check.py 10.42.0.2
+  python3 i10_non_motion_check.py 192.0.2.2
 """
 
 import socket
@@ -110,7 +110,7 @@ EXPECTED_SERVICES = [
 def main() -> None:
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} <robot_ip>")
-        print(f"Example: {sys.argv[0]} 10.42.0.2")
+        print(f"Example: {sys.argv[0]} 192.0.2.2")
         sys.exit(1)
 
     ip = sys.argv[1]

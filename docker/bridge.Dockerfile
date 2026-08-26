@@ -1,6 +1,6 @@
 FROM ros:foxy-ros1-bridge-focal
 
-# ponytail: Foxy+Noetic on Focal — the only official Docker image with both ROS 1 and ROS 2.
+# Foxy and Noetic on Focal provide an official base with both ROS 1 and ROS 2.
 # DDS topics cross to the laptop's Jazzy via shared RMW (FastDDS).
 
 ENV DEBIAN_FRONTEND=noninteractive

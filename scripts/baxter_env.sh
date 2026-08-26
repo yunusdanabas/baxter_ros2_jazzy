@@ -5,9 +5,12 @@
 export ROS_DOMAIN_ID=42
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
-# Robot
-export BAXTER_IP="${BAXTER_IP:-192.168.1.224}"
-export ROS_MASTER_URI="http://${BAXTER_IP}:11311"
+# Robot: require an explicit address so a stale checkout cannot target a robot.
+if [[ -z "${BAXTER_ROBOT_IP:-}" ]]; then
+  echo "Set BAXTER_ROBOT_IP to the Baxter address before sourcing this file." >&2
+  return 1 2>/dev/null || exit 1
+fi
+export ROS_MASTER_URI="http://${BAXTER_ROBOT_IP}:11311"
 
 # Laptop IP on the robot network
 export ROS_IP="${ROS_IP:-$(hostname -I | awk '{print $1}')}"
@@ -17,7 +20,7 @@ source /opt/ros/jazzy/setup.bash 2>/dev/null || true
 source "$(dirname "${BASH_SOURCE[0]}")/../install/setup.bash" 2>/dev/null || true
 
 echo "=== Baxter Hardware Session ==="
-echo "BAXTER_IP:       ${BAXTER_IP}"
+echo "BAXTER_ROBOT_IP: ${BAXTER_ROBOT_IP}"
 echo "ROS_MASTER_URI:  ${ROS_MASTER_URI}"
 echo "ROS_IP:          ${ROS_IP}"
 echo "ROS_DOMAIN_ID:   ${ROS_DOMAIN_ID}"

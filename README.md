@@ -1,23 +1,36 @@
-# baxter_ros2_jazzy
+[![CI](https://github.com/yunusdanabas/baxter_ros2_jazzy/actions/workflows/ci.yml/badge.svg)](https://github.com/yunusdanabas/baxter_ros2_jazzy/actions/workflows/ci.yml)
 
-ROS 2 Jazzy workspace for Baxter simulation first: Gazebo Harmonic, `ros2_control`, MoveIt 2 in simulation, then hardware work only after later gates pass.
+# Baxter ROS 2 Jazzy
+
+Simulation-first ROS 2 Jazzy workspace for the Baxter Research Robot, built around
+Gazebo Harmonic, `ros2_control`, and MoveIt 2. It is intended for developers who
+want a reproducible modern Baxter simulation and a conservative starting point for
+future hardware integration.
+
+For the ROS Noetic/Python 3 SDK, operational tools, and Gazebo Classic sibling,
+see [`baxter_noetic`](https://github.com/yunusdanabas/baxter_noetic).
 
 ## Mode Selector
 
 | Mode | Status | Start here |
 |---|---:|---|
-| Gazebo sim | passed | `docs/getting_started_sim.md` |
-| Gazebo + RViz | manual/local GUI | `docs/simulation.md` |
-| MoveIt sim | passed, manual/local smoke | `docs/moveit_guide.md` |
-| Gazebo + MoveIt RViz | manual/local GUI | `docs/moveit_guide.md` |
-| Default CI/devcontainer | passed, hardware-free | `docs/ci_release_checklist.md` |
-| Hardware bridge | blocked | I10 is not started; no beginner docs yet |
-| Supervised hardware motion | blocked | I12 is not started; no support claim |
+| Gazebo sim | manually validated | `docs/getting_started_sim.md` |
+| Gazebo + RViz | manually validated GUI | `docs/simulation.md` |
+| MoveIt sim | manually validated | `docs/moveit_guide.md` |
+| Gazebo + MoveIt RViz | manually validated GUI | `docs/moveit_guide.md` |
+| Default CI/devcontainer | passing, hardware-free | `docs/ci_release_checklist.md` |
+| Hardware bridge | experimental | Code is present but unvalidated on `main` |
+| Supervised hardware motion | unsupported | No support claim |
+| Cameras, grippers, tuck/untuck | not implemented | Outside the current ROS 2 profile |
 | Zenoh/compatibility fallbacks | deferred | Not in the default path |
 
 ## Current Status
 
-The supported default path is hardware-free simulation through a measured, reversible `sim_tiny_trajectory`. Both RViz profiles work: the plain RobotModel/TF one and the MoveIt MotionPlanning one, the latter with interactive-marker IK on each gripper. Hardware remains blocked.
+The supported default path is hardware-free simulation through a measured,
+reversible `sim_tiny_trajectory`. Both RViz profiles work: the plain RobotModel/TF
+view and the MoveIt MotionPlanning view with interactive-marker IK at each gripper
+frame. Public CI builds the workspace and checks the robot and MoveIt
+configuration; full Gazebo and GUI execution remain local runtime checks.
 
 Implemented local packages:
 
@@ -27,6 +40,7 @@ Implemented local packages:
 | `baxter_gz_sim` | Gazebo Harmonic, fixed pedestal mount, 17-joint state, two arm controllers, plain RViz profile. |
 | `baxter_examples` | Reversible direct and MoveIt motion/cancellation checks. |
 | `baxter_moveit_config` | Readiness-gated MoveIt 2, IK/pose clients, and a MotionPlanning RViz profile. |
+| `baxter_hardware_bridge` | Experimental action-shim and mock-test scaffolding; not a supported hardware profile. |
 
 Imported dependency:
 
@@ -47,7 +61,9 @@ colcon build --base-paths src --symlink-install --packages-skip baxter_bridge
 source install/setup.bash
 ```
 
-Run one simulation at a time. If this workspace or its underlay changes, remove generated `build/`, `install/`, and `log/` before rebuilding; never hand-edit generated setup files.
+Run one simulation at a time. If this workspace or its underlay changes, remove
+generated `build/`, `install/`, and `log/` before rebuilding; never hand-edit
+generated setup files.
 
 If `src/baxter_common_ros2` already exists, do not re-import over local changes; verify the pin instead:
 
@@ -77,18 +93,39 @@ Expected result: both arms reach a bounded target within `0.02 rad` and return t
 
 ## Devcontainer And CI
 
-The default devcontainer and GitHub Actions workflow install only the sim/MoveIt dependencies. They do not install ROS 1, hardware bridge packages, robot-network tooling, or Zenoh.
+The default devcontainer and GitHub Actions workflow install only the dependencies
+needed for the hardware-free build. They do not install ROS 1, connect to a robot,
+or start the experimental hardware bridge.
 
 CI checks the pinned SHA, runs `rosdep install`, builds with `colcon build --base-paths src --symlink-install --packages-skip baxter_bridge`, compiles/imports local Python files, loads the Gazebo Xacro/URDF, and statically checks MoveIt config.
 
-## Support Boundary
+## Common pitfalls
 
-No hardware support is claimed yet. `baxter_bridge` is bridge-host-only and is intentionally skipped in default sim/devcontainer/CI builds because it links ROS 1 libraries unavailable on clean Ubuntu 24.04/Jazzy machines.
+- Use Ubuntu 24.04 with ROS 2 Jazzy, or the included devcontainer.
+- Import `repos/baxter_core.repos` before building; the Baxter description is pinned
+  rather than vendored.
+- Build with `--packages-skip baxter_bridge`; that imported package links ROS 1
+  libraries unavailable on a clean Jazzy host.
+- Source both `/opt/ros/jazzy/setup.bash` and `install/setup.bash` in every new
+  terminal.
+- Use the checked-in launch files for RViz. Bare `rviz2` does not receive the full
+  MoveIt configuration.
 
-Do not use this repo to move real hardware until I10-I12 gates pass under supervision. Beginner docs intentionally do not include raw safety-topic publishing or hardware enable commands.
+## Support boundary
+
+No hardware support is claimed. `baxter_bridge` is bridge-host-only and is
+intentionally skipped in default builds because it links ROS 1 libraries unavailable
+on clean Ubuntu 24.04/Jazzy machines. The local `baxter_hardware_bridge` package can
+be built and exercised against its mock robot, but its real-robot path has not been
+validated on `main`.
+
+Do not use this revision to move real hardware. Cameras, gripper commands, and
+tuck/untuck are also outside the supported ROS 2 profile; use the Noetic sibling
+when those legacy SDK tools are required.
 
 Local project code is BSD-3-Clause. Imported sources keep their upstream licenses; see `docs/licensing_and_sources.md`.
 
 ## Docs
 
-Start at `docs/index.md`. Release support files: `SUPPORT.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, and `docs/release_notes_v0.1.0-sim.md`.
+Start at `docs/index.md`. Project support files include `SUPPORT.md`, `SECURITY.md`,
+`CONTRIBUTING.md`, `CHANGELOG.md`, and `docs/simulation_baseline.md`.

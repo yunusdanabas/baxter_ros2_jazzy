@@ -11,8 +11,8 @@ This handoff is for the sim-first release baseline. It is not a hardware runbook
 | `sim_moveit` | passed, manual/local smoke |
 | `sim_moveit_rviz` | passed, manual/local GUI |
 | default CI/devcontainer | passed, hardware-free |
-| `hardware_bridge` | blocked |
-| supervised hardware motion | blocked |
+| `hardware_bridge` | experimental and unsupported |
+| supervised hardware motion | unsupported |
 | Zenoh/compatibility fallback | deferred |
 
 ## Default Release Check
@@ -43,7 +43,7 @@ Required evidence:
 
 ## Hardware Blockers
 
-Hardware support remains blocked by:
+Hardware support remains unavailable until maintainers complete and review:
 
 - Physical Baxter access.
 - Bridge host choice.
@@ -67,7 +67,7 @@ Do not merge hardware bridge tooling, action shims, gripper implementation, Zeno
 - `SUPPORT.md`
 - `SECURITY.md`
 - `CHANGELOG.md`
-- `docs/release_notes_v0.1.0-sim.md`
+- `docs/simulation_baseline.md`
 - `docs/ci_release_checklist.md`
 - `docs/repos_and_pins.md`
 - `docs/licensing_and_sources.md`

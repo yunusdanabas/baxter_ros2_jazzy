@@ -11,8 +11,9 @@ This is a community/university ROS 2 Jazzy workspace. It is not official Baxter 
 | `sim_moveit` | passed, manual/local smoke | Readiness-gated MoveIt 2 with reversible left/right/both-arm execution. |
 | `sim_moveit_rviz` | passed, manual/local GUI | Checked-in MotionPlanning profile with OMPL/RRTConnect. |
 | default CI/devcontainer | passed, hardware-free | Build, import/model checks, static MoveIt checks. |
-| `hardware_bridge` | blocked | No support claim. I10 has not run. |
-| supervised hardware motion | blocked | No support claim. I12 has not run. |
+| `hardware_bridge` | experimental | Mock/action-shim code exists, but the real-robot path is unvalidated on `main`. |
+| supervised hardware motion | unsupported | No support claim. |
+| cameras, gripper commands, tuck/untuck | not implemented | Outside the current ROS 2 profile. |
 | Zenoh/compatibility fallback | deferred | Not in default install/devcontainer/CI. |
 
 ## Scoped Limitations
@@ -27,4 +28,5 @@ This is a community/university ROS 2 Jazzy workspace. It is not official Baxter 
 
 Use the issue template matching the affected profile. Include the default build command, source pin, logs, and whether hardware was involved.
 
-Do not use this repo to move real hardware until I10-I12 gates pass under supervision.
+Do not use this revision to move real hardware. Hardware work requires an explicit,
+reviewed validation plan and physical supervision.

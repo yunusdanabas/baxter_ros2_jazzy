@@ -1,6 +1,8 @@
 # Baxter ROS 2 Jazzy Docs
 
-This documentation covers the sim-first baseline that has passed gates in I01-I09 and the I14 release-hardening baseline. Hardware bridge and supervised hardware motion are not documented as supported modes yet.
+This documentation covers the supported simulation-first baseline. Experimental
+hardware bridge code is present for maintainers, but real-robot operation is not a
+supported mode on `main`.
 
 ## Mode Selector
 
@@ -11,8 +13,9 @@ This documentation covers the sim-first baseline that has passed gates in I01-I0
 | MoveIt 2 sim | passed, manual/local smoke | `moveit_guide.md` |
 | Gazebo + MoveIt RViz | passed, manual/local GUI | `moveit_guide.md` |
 | Default CI/devcontainer | passed, hardware-free | `ci_release_checklist.md` |
-| Hardware bridge | blocked | Not in default docs |
-| Hardware motion | blocked | Not supported |
+| Hardware bridge | experimental | `hardware_runbook.md` (maintainer-only boundary) |
+| Hardware motion | unsupported | Do not use this revision to move a robot |
+| Cameras, gripper commands, tuck/untuck | not implemented | Use the Noetic sibling where applicable |
 | Zenoh/compatibility fallback | deferred | Not in default docs |
 
 ## Recommended Path
@@ -32,8 +35,8 @@ This documentation covers the sim-first baseline that has passed gates in I01-I0
 | `licensing_and_sources.md` | Source/license status and local BSD-3-Clause project license. |
 | `compatibility_matrix.md` | Tested Ubuntu/ROS/Gazebo/MoveIt/source-pin profile status. |
 | `ci_release_checklist.md` | Default CI checks and manual smoke checklist. |
-| `release_notes_v0.1.0-sim.md` | First sim-first release notes and support labels. |
-| `maintainer_handoff.md` | Maintainer release checklist, pin policy, and blocked hardware handoff items. |
+| `simulation_baseline.md` | Scope and support labels for the initial simulation baseline. |
+| `maintainer_handoff.md` | Maintainer checklist, pin policy, and experimental hardware handoff items. |
 | `reference/baxter_legacy/` | Legacy Rethink Baxter PDFs (Intera user guide, research demos, thesis). |
 
 ## Default Rules

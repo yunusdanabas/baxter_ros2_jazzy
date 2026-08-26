@@ -8,6 +8,7 @@
 | `baxter_gz_sim` | I04-I06, I15 | Gazebo Harmonic, deterministic mount, arm controllers, 17-joint state, plain RViz. | passed |
 | `baxter_examples` | I06-I07, I15 | Reversible direct and MoveIt motion/cancellation checks. | passed |
 | `baxter_moveit_config` | I07, I15 | Readiness-gated MoveIt 2, IK/pose clients, MotionPlanning RViz. | passed |
+| `baxter_hardware_bridge` | experimental | Mock robot, safety checks, and action-shim scaffolding. Real hardware is unsupported on `main`. | unsupported |
 
 ## Imported ECN Packages
 
@@ -25,11 +26,11 @@ Default source: `CentraleNantesRobotics/baxter_common_ros2` at `678bfabea8c895b4
 
 | Package/work | Status | Reason |
 |---|---:|---|
-| Hardware bridge package | blocked until I10 | Requires physical Baxter access, bridge host choice, and network policy. |
-| Hardware action shims | blocked until I11 | Requires I10 non-motion gate first. |
-| Supervised hardware motion | blocked until I12 | Requires I11 safety/action-shim gate and supervision. |
+| Real-robot bridge validation | not completed on `main` | Requires physical Baxter access, bridge host choice, and network policy. |
+| Supervised hardware motion | unsupported | Requires reviewed safety evidence and physical supervision. |
 | Gripper controllers | deferred | Not required for arm sim gates. |
 | Camera/rendering examples | deferred | Pure headless Gazebo is camera-less in current scope. |
+| Tuck/untuck tooling | deferred | No ROS 2 implementation is provided. |
 | Zenoh fallback | deferred | Not in default install/devcontainer/CI. |
 | Compatibility layers | deferred | No passed gate requires them yet. |
 

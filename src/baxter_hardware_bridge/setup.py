@@ -5,6 +5,11 @@ package_name = "baxter_hardware_bridge"
 setup(
     name=package_name,
     version="0.0.0",
+    description="Experimental ROS 2 action shims and mock safety checks for Baxter.",
+    maintainer="Yunus Danabas",
+    maintainer_email="76391173+yunusdanabas@users.noreply.github.com",
+    license="BSD-3-Clause",
+    tests_require=["pytest"],
     packages=[package_name],
     data_files=[
         ("share/ament_index/resource_index/packages",

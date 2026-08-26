@@ -70,15 +70,15 @@ def generate_launch_description():
         name="rviz2",
         output="screen",
         arguments=["-d", rviz_config],
-        # ponytail: QApplication calls setlocale(LC_ALL,"") before rclcpp::init, so rcl's
+        # QApplication calls setlocale(LC_ALL,"") before rclcpp::init, so rcl's
         # YAML parser reads --params-file under LC_NUMERIC. In a comma-decimal locale
         # strtod stops at the '.', "0.005" is stored as a string, and the statically
         # typed declare in MoveIt's kinematics ParamListener throws
         # InvalidParameterTypeException -- which RobotModelLoader does not catch, so
         # loadRobotModel dies and MotionPlanning stays empty.
-        # ponytail: LC_NUMERIC only; an explicit LC_ALL in the environment would win.
+        # LC_NUMERIC only; an explicit LC_ALL in the environment would win.
         additional_env={"LC_NUMERIC": "C"},
-        # ponytail: RViz does not need robot_description_planning.joint_limits --
+        # RViz does not need robot_description_planning.joint_limits --
         # move_group owns the limits and RViz just replays its trajectories.
         # URDF/SRDF reach RViz via the /robot_description(_semantic) topics.
         parameters=[
@@ -100,7 +100,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("headless", default_value="true"),
-            # ponytail: headless:=false means "I want to see things", so it implies RViz.
+            # headless:=false means "I want to see things", so it implies RViz.
             # CI keeps headless:=true and stays RViz-free.
             DeclareLaunchArgument("rviz", default_value=NotSubstitution(headless)),
             DeclareLaunchArgument("readiness_timeout", default_value="60.0"),

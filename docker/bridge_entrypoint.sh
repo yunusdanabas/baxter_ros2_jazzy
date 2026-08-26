@@ -11,9 +11,10 @@ export ROS_DISTRO=foxy
 # Use FastDDS for cross-distro DDS compatibility with Jazzy
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
-# Robot connection — overridable at runtime
-export ROS_MASTER_URI="${ROS_MASTER_URI:-http://192.168.1.224:11311}"
-export ROS_IP="${ROS_IP:-$(hostname -I | awk '{print $1}')}"
+# Robot connection must be supplied explicitly at runtime.
+: "${ROS_MASTER_URI:?Set ROS_MASTER_URI to the Baxter ROS 1 master URI}"
+: "${ROS_IP:?Set ROS_IP to the bridge host address on the robot network}"
+export ROS_MASTER_URI ROS_IP
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
 
 echo "=== Baxter Bridge Container ==="

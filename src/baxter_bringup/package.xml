@@ -4,7 +4,7 @@
   <name>baxter_bringup</name>
   <version>0.0.0</version>
   <description>Minimal Baxter launch entry points for the ROS 2 Jazzy workspace.</description>
-  <maintainer email="yunus@example.com">Yunus Danabas</maintainer>
+  <maintainer email="76391173+yunusdanabas@users.noreply.github.com">Yunus Danabas</maintainer>
   <license>BSD-3-Clause</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

@@ -1,106 +1,67 @@
-# Baxter Hardware Runbook
+# Experimental hardware bring-up
 
-## Prerequisites
+> **Unsupported on `main`.** This document describes the boundary around the
+> experimental bridge and action-shim code. It is not a real-robot quick start,
+> and this revision must not be used to command physical motion.
 
-- Laptop on the same network as Baxter (192.168.1.x)
-- ROS 2 Jazzy workspace built: `colcon build --base-paths src --packages-skip baxter_bridge`
-- Baxter powered on with ROS 1 master running
+## Why the hardware layer is separate
 
-## Quick Start (3 terminals)
+Baxter's controller still exposes a ROS 1 interface. The supported ROS 2
+simulation talks to standard `FollowJointTrajectory` actions, while the
+experimental hardware path is split into two adapters:
 
-### Terminal 1: Start the bridge
+1. `scripts/py_bridge.py` translates selected robot state and joint-command
+   topics between Baxter's ROS 1 master and ROS 2.
+2. `baxter_hardware_bridge` exposes left- and right-arm
+   `FollowJointTrajectory` action shims with robot-state safety checks.
+
+This separation lets MoveIt-facing clients keep the same ROS 2 action shape in
+simulation and in a future hardware profile. It does not prove hardware parity:
+network behavior, timing, cancellation, safety state, and physical motion still
+require supervised validation.
+
+## Hardware-free dry run
+
+The action shims can be exercised against the included mock robot without a
+physical Baxter or a ROS 1 installation:
 
 ```bash
-cd ~/baxter_ros2_jazzy
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run baxter_hardware_bridge dry_run_test
+```
+
+The test accepts a bounded goal in a safe mock state, rejects invalid joint
+names, and rejects goals in an unsafe state. Passing it is useful software
+evidence, not permission to operate hardware.
+
+## Configuration boundary
+
+Hardware sessions must provide all network values explicitly. The repository
+does not ship a robot address or workstation address.
+
+```bash
+export BAXTER_ROBOT_IP=<robot-ip>
+export ROS_IP=<workstation-ip-on-robot-network>
 source scripts/baxter_env.sh
-python3 scripts/py_bridge.py
 ```
 
-This connects to Baxter's ROS 1 master, bridges `/robot/state` and `/robot/joint_states`
-to ROS 2, and bridges `/robot/limb/{side}/joint_command` back to ROS 1.
-
-Wait until you see: `Bridge started: master=http://192.168.1.224:11311`
-
-### Terminal 2: Verify robot state (I10 non-motion gate)
+The pure-Python bridge likewise requires the ROS 1 master URI:
 
 ```bash
-cd ~/baxter_ros2_jazzy
-source scripts/baxter_env.sh
-ros2 topic echo /robot/state
-ros2 topic hz /robot/joint_states
+python3 scripts/py_bridge.py \
+  --master http://<robot-ip>:11311 \
+  --ip <workstation-ip-on-robot-network>
 ```
 
-You should see:
-- `/robot/state` messages with `ready=true enabled=true stopped=false error=false`
-- `/robot/joint_states` at a stable rate with all 14 arm joints + head_pan
+## Required validation before support
 
-### Terminal 3: Start action shims
+- Confirm the bridge carries complete, fresh robot and joint state without motion.
+- Verify e-stop, enabled, stopped, and error-state handling with supervision.
+- Review action-shim limits, timeout behavior, rejection paths, and cancellation.
+- Validate one arm at a time at conservative speed with the workspace clear and
+  the physical e-stop reachable.
+- Record the exact source revision and results without committing robot serials,
+  MAC addresses, LAN topology, raw bags, or operator-session data.
 
-```bash
-cd ~/baxter_ros2_jazzy
-source scripts/baxter_env.sh
-ros2 launch baxter_hardware_bridge hardware_bringup.launch.py
-```
-
-This starts `FollowJointTrajectory` action servers on:
-- `/robot/limb/left/follow_joint_trajectory`
-- `/robot/limb/right/follow_joint_trajectory`
-
-## I10 Non-Motion Gate Checklist
-
-Run these BEFORE any motion:
-
-1. **Network**: `ping 192.168.1.224` works
-2. **Bridge running**: Terminal 1 shows "Bridge started"
-3. **Robot state**: `ros2 topic echo /robot/state` shows safe state
-4. **Joint states**: `ros2 topic hz /robot/joint_states` is stable
-5. **Action servers**: `ros2 action list` shows both follow_joint_trajectory actions
-6. **Safety check**: `ros2 run baxter_hardware_bridge baxter_safety_check` prints safe=true
-
-## I11 Action Shim Gate (no motion yet)
-
-```bash
-# Verify shims reject unsafe goals:
-ros2 action send_goal /robot/limb/left/follow_joint_trajectory \
-  control_msgs/action/FollowJointTrajectory \
-  "{trajectory: {joint_names: [bad_name], points: []}}" \
-  --feedback
-# Expected: REJECTED (bad joint names)
-```
-
-## I12 Supervised Hardware Motion
-
-**REQUIRES physical supervision, clear workspace, e-stop reachable.**
-
-```bash
-# Tiny left-arm trajectory (0.15 rad on left_s1, 2 sec)
-ros2 action send_goal /robot/limb/left/follow_joint_trajectory \
-  control_msgs/action/FollowJointTrajectory \
-  "{trajectory: {
-    joint_names: [left_s0, left_s1, left_e0, left_e1, left_w0, left_w1, left_w2],
-    points: [{positions: [0, -0.55, 0, 0.75, 0, 1.26, 0], time_from_start: {sec: 0}},
-             {positions: [0, -0.40, 0, 0.75, 0, 1.26, 0], time_from_start: {sec: 2}}]
-  }}" --feedback
-```
-
-## If Baxter's ROS 1 Master Is Not Responding
-
-SSH into Baxter and restart it:
-
-```bash
-ssh rethink@192.168.1.224
-# On Baxter:
-sudo service roscore stop
-sudo service roscore start
-# Or manually:
-roscore &
-```
-
-## Safety Rules
-
-- **Never** publish to `/robot/set_super_enable` from beginner examples
-- **Never** publish to `/robot/set_super_stop` for routine cancellation
-- Action shims hold position on cancel (publish current positions via JointCommand)
-- Speed ratio defaults to 0.1 (10%) — keep it low for labs
-- Physical e-stop is the primary emergency stop
-- No motion until I10 gate passes
+Until those checks are reviewed on `main`, hardware operation remains unsupported.
